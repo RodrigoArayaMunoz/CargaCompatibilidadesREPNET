@@ -1,0 +1,63 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background-color: #f4f6f8;
+}
+
+/* Contenedor principal — ocupa toda la pantalla y centra el contenido */
+.container {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 32px;
+  padding: 24px;
+}
+
+/* Título */
+.title {
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  font-weight: 700;
+  color: #1f2937;
+  text-align: center;
+}
+
+/* Logo */
+.logo {
+  width: clamp(140px, 20vw, 220px);
+  max-width: 80%;
+  object-fit: contain;
+}
+
+/* Botón */
+.process-button {
+  padding: 14px 40px;
+  font-size: clamp(0.875rem, 1.5vw, 1rem);
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  background-color: #4f6ef7;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.25s ease, transform 0.2s ease;
+}
+
+.process-button:hover {
+  background-color: #3b5bdb;
+  transform: scale(1.04);
+}
+
+.process-button:active {
+  transform: scale(0.98);
+}
