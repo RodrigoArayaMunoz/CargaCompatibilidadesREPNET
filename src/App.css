@@ -121,15 +121,15 @@ body {
 }
 
 .file-label:hover {
-  border-color: #3b82f6;
-  background-color: #eff6ff;
-  color: #eff6ff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
 }
 
 /* Texto del archivo seleccionado */
 .file-name {
   font-size: 0.82rem;
-  color: #089714;
+  color: #000000;
   text-align: center;
   margin-top: -8px;
 }
