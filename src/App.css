@@ -113,7 +113,7 @@ body {
   color: #eff6ff;
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   border: none;
-  border-radius: 11px,
+  border-radius: 11px;
   cursor: pointer;
   transition: all 0.2s ease;
     font-size: 1rem;
