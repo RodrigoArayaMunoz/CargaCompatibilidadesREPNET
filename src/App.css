@@ -1,62 +1,135 @@
+/* Reset completo */
 * {
-  box-sizing: border-box;
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
 }
 
 html, body, #root {
   height: 100%;
-  width: 100%;
+  width: 100%;          /* ← CLAVE: sin esto el body no ocupa el ancho completo */
 }
 
 body {
+  font-family: Arial, Helvetica, sans-serif;
   background-color: #f4f6f8;
 }
 
-/* Contenedor principal — ocupa toda la pantalla y centra el contenido */
+/* Contenedor principal — ahora sí centrado real */
 .container {
+  width: 100%;          /* ← CLAVE: ocupa todo el ancho */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 32px;
-  padding: 24px;
+  text-align: center;
+  gap: 28px;
+  padding: 40px 20px;
 }
+
+
 
 /* Título */
 .title {
-  font-size: clamp(1.6rem, 4vw, 2.8rem);
-  font-weight: 700;
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-weight: 800;
   color: #1f2937;
-  text-align: center;
+  line-height: 1.2;
 }
 
 /* Logo */
 .logo {
-  width: clamp(140px, 20vw, 220px);
+  width: 180px;
   max-width: 80%;
-  object-fit: contain;
+}
+
+/* Zona de input file */
+.file-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.file-input {
+  display: none;
 }
 
 /* Botón */
 .process-button {
-  padding: 14px 40px;
-  font-size: clamp(0.875rem, 1.5vw, 1rem);
-  font-weight: 500;
+  width: 25%;
+  padding: 14px 0;
+  font-size: 1rem;
+  font-weight: 600;
   border: none;
-  border-radius: 8px;
-  background-color: #4f6ef7;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   cursor: pointer;
-  transition: background-color 0.25s ease, transform 0.2s ease;
+  transition: all 0.25s ease;
+  letter-spacing: 0.3px;
 }
 
 .process-button:hover {
-  background-color: #3b5bdb;
-  transform: scale(1.04);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
 }
 
 .process-button:active {
-  transform: scale(0.98);
+  transform: translateY(0);
+}
+
+.process-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Mensajes */
+.status-message {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.status-message.error      { color: #dc2626; }
+.status-message.success    { color: #16a34a; }
+.status-message.processing { color: #f59e0b; }
+
+/* Label que actúa como botón centrado */
+.file-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 25%;
+  padding: 12px 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #eff6ff;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+    font-size: 1rem;
+  font-weight: 600;
+}
+
+.file-label:hover {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  color: #eff6ff;
+}
+
+/* Texto del archivo seleccionado */
+.file-name {
+  font-size: 0.82rem;
+  color: #089714;
+  text-align: center;
+  margin-top: -8px;
 }
