@@ -37,3 +37,10 @@ src/backend/compatibilities/uploads/
 **/uploads/
 *.xlsx
 *.csv
+
+# =========================
+# ENV VARIABLES (MUY IMPORTANTE)
+# =========================
+.env
+*.env
+.env.*

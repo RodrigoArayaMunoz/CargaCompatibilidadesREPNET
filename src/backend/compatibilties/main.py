@@ -1,11 +1,18 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from urllib.parse import urlencode
 import os
 import uuid
 import time
 import pandas as pd
 import openpyxl
+import httpx
+
+# =========================
+# Config general
+# =========================
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -27,6 +34,133 @@ JOBS: dict[str, dict] = {}
 
 EXPECTED = ["SKU", "Marca", "Modelo", "Desde", "Hasta"]
 
+# =========================
+# Mercado Libre OAuth Config
+# =========================
+
+ML_AUTH_URL = "https://auth.mercadolibre.com/authorization"
+ML_TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
+
+# ✅ Usa variables de entorno (NO hardcode)
+ML_CLIENT_ID = os.getenv("ML_CLIENT_ID")              # tu App ID
+ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET")      # tu Client Secret
+ML_REDIRECT_URI = os.getenv("ML_REDIRECT_URI")        # ej: https://xxxx.ngrok-free.dev/auth/callback
+
+# Demo in-memory token store (en producción usa DB/Redis)
+TOKENS_BY_USER: dict[int, dict] = {}
+
+
+def _require_ml_env():
+    if not ML_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Falta ML_CLIENT_ID en variables de entorno")
+    if not ML_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Falta ML_CLIENT_SECRET en variables de entorno")
+    if not ML_REDIRECT_URI:
+        raise HTTPException(
+            status_code=500,
+            detail="Falta ML_REDIRECT_URI en variables de entorno (debe coincidir EXACTO con el Redirect URI configurado en ML)",
+        )
+
+
+@app.get("/auth/login")
+def ml_auth_login(state: str | None = None):
+    """
+    Inicia el flujo OAuth: redirige al usuario a Mercado Libre para autorizar la app.
+    Abre este endpoint en el navegador.
+    """
+    _require_ml_env()
+
+    params = {
+        "response_type": "code",
+        "client_id": ML_CLIENT_ID,
+        "redirect_uri": ML_REDIRECT_URI,
+    }
+
+    # state es opcional pero recomendable (anti-CSRF / correlación de sesión)
+    if state:
+        params["state"] = state
+
+    url = f"{ML_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(url)
+
+
+@app.get("/auth/callback")
+async def ml_auth_callback(code: str = Query(...), state: str | None = None):
+    """
+    Mercado Libre redirige aquí con ?code=...
+    Canjea el code por access_token y refresh_token.
+    """
+    _require_ml_env()
+
+    payload = {
+        "grant_type": "authorization_code",
+        "client_id": ML_CLIENT_ID,
+        "client_secret": ML_CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": ML_REDIRECT_URI,
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(ML_TOKEN_URL, data=payload)
+
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+
+    token_data = r.json()
+    user_id = token_data.get("user_id")
+
+    if user_id:
+        TOKENS_BY_USER[int(user_id)] = token_data
+
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "scope": token_data.get("scope"),
+        "expires_in": token_data.get("expires_in"),
+        "has_refresh_token": bool(token_data.get("refresh_token")),
+        "state": state,
+        "message": "OAuth OK. Ya tienes access_token/refresh_token guardado (demo en memoria).",
+    }
+
+
+@app.post("/auth/refresh")
+async def ml_refresh_token(user_id: int):
+    """
+    Renueva access_token usando refresh_token (ideal para no cortar integración cada 6 horas).
+    """
+    _require_ml_env()
+
+    token_data = TOKENS_BY_USER.get(int(user_id))
+    if not token_data or not token_data.get("refresh_token"):
+        raise HTTPException(status_code=404, detail="No hay refresh_token guardado para ese user_id")
+
+    payload = {
+        "grant_type": "refresh_token",
+        "client_id": ML_CLIENT_ID,
+        "client_secret": ML_CLIENT_SECRET,
+        "refresh_token": token_data["refresh_token"],
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(ML_TOKEN_URL, data=payload)
+
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+
+    new_token_data = r.json()
+    TOKENS_BY_USER[int(user_id)] = new_token_data
+
+    return {
+        "ok": True,
+        "user_id": int(user_id),
+        "expires_in": new_token_data.get("expires_in"),
+        "message": "Token renovado y guardado (demo en memoria).",
+    }
+
+
+# =========================
+# Tu lógica Excel -> CSV
+# =========================
 
 class JobResponse(BaseModel):
     job_id: str
@@ -36,19 +170,11 @@ class JobResponse(BaseModel):
 
 
 def debug_print_excel_first10(xlsx_path: str, sheet_name: str = "Hoja1", n_rows: int = 5):
-    """
-    Imprime por consola:
-    - títulos de las 10 primeras columnas
-    - valores de las primeras n_rows filas (después del header)
-    Usando openpyxl read_only para performance.
-    """
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
     if sheet_name not in wb.sheetnames:
         sheet_name = wb.sheetnames[0]
-
     ws = wb[sheet_name]
 
-    # Headers: fila 1, columnas 1..10
     headers = [ws.cell(row=1, column=c).value for c in range(1, 11)]
     print("\n==============================")
     print(f"DEBUG EXCEL: Archivo: {os.path.basename(xlsx_path)}")
@@ -57,7 +183,6 @@ def debug_print_excel_first10(xlsx_path: str, sheet_name: str = "Hoja1", n_rows:
     for i, h in enumerate(headers, start=1):
         print(f"  {i}. {h}")
 
-    # Primeras filas de datos: filas 2..(n_rows+1), columnas 1..10
     print(f"\nDEBUG EXCEL: Primeras {n_rows} filas (valores 10 primeras columnas):")
     for r in range(2, 2 + n_rows):
         row_vals = [ws.cell(row=r, column=c).value for c in range(1, 11)]
@@ -67,16 +192,11 @@ def debug_print_excel_first10(xlsx_path: str, sheet_name: str = "Hoja1", n_rows:
 
 
 def excel_to_normalized_csv(xlsx_path: str, csv_path: str, sheet_name: str = "Hoja1"):
-    """
-    Lee el Excel y crea un CSV normalizado con columnas:
-    SKU, Marca, Modelo, Desde, Hasta
-    """
-    # Leemos solo las columnas necesarias (más rápido y menos RAM)
     df = pd.read_excel(
         xlsx_path,
         sheet_name=sheet_name,
         engine="openpyxl",
-        usecols=EXPECTED,  # clave: solo estas columnas
+        usecols=EXPECTED,
     )
 
     df.columns = [str(c).strip() for c in df.columns]
@@ -87,7 +207,6 @@ def excel_to_normalized_csv(xlsx_path: str, csv_path: str, sheet_name: str = "Ho
 
     df = df[EXPECTED].copy()
 
-    # Normalización básica
     df["SKU"] = df["SKU"].astype(str).str.strip()
     df["Marca"] = df["Marca"].astype(str).str.strip().str.upper()
     df["Modelo"] = df["Modelo"].astype(str).str.strip().str.upper()
@@ -106,7 +225,7 @@ def process_csv_job(job_id: str):
     job["progress"] = 0
 
     try:
-        total_rows = sum(1 for _ in open(csv_path, "rb")) - 1  # header
+        total_rows = sum(1 for _ in open(csv_path, "rb")) - 1
         if total_rows <= 0:
             job["status"] = "error"
             job["message"] = "El CSV no tiene filas."
@@ -117,15 +236,14 @@ def process_csv_job(job_id: str):
         chunksize = 5000
 
         for chunk in pd.read_csv(csv_path, chunksize=chunksize, encoding="utf-8"):
-            # DEBUG: solo primer chunk
             if processed == 0:
                 print("\n=== DEBUG CSV NORMALIZADO ===")
                 print("Columnas:", list(chunk.columns))
                 print(chunk.head(5).to_string(index=False))
                 print("=============================\n")
 
-            # aquí irá tu lógica real ML más adelante
-            time.sleep(0.02)  # simula trabajo
+            # TODO: aquí va la lógica real de ML para compatibilidades
+            time.sleep(0.02)
 
             processed += len(chunk)
             job["progress"] = int(processed * 100 / max(total_rows, 1))
@@ -155,13 +273,11 @@ async def upload_excel(file: UploadFile = File(...)):
     with open(xlsx_path, "wb") as f:
         f.write(content)
 
-    # ✅ DEBUG: imprimir headers y valores de las primeras 10 columnas
     try:
         debug_print_excel_first10(xlsx_path, sheet_name="Hoja1", n_rows=5)
     except Exception as e:
         print("WARNING: no se pudo imprimir debug del Excel:", str(e))
 
-    # Convertir Excel -> CSV normalizado
     try:
         excel_to_normalized_csv(xlsx_path, csv_path, sheet_name="Hoja1")
     except Exception as e:
