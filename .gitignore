@@ -23,8 +23,17 @@ dist-ssr
 *.sln
 *.sw?
 
-# Backend uploads (archivos temporales)
-uploads/
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+.venv/
+
+# Node
+node_modules/
+
+# Uploads (tu carpeta de archivos)
 src/backend/compatibilities/uploads/
+**/uploads/
 *.xlsx
 *.csv
