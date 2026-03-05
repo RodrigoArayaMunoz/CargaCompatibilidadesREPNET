@@ -37,3 +37,4 @@ src/backend/compatibilities/uploads/
 **/uploads/
 *.xlsx
 *.csv
+*.pdf
