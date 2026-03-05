@@ -145,13 +145,26 @@ function App() {
     }
   };
 
+  const GenerateDict = async () => {
+
+  }
+
   const acceptText = "Archivo permitido: .xlsx o .csv";
   const buttonText = status === "processing" ? "Procesando..." : "Procesar Archivo";
+  const buttonDict = status === "processing" ? "Procesando..." : "Generar Diccionario de SKU-PUBLICACIONES";
 
   return (
     <div className="container">
       <h1 className="title">Carga de Compatibilidades</h1>
       <img src={Logo} alt="Logo" className="logo" />
+
+            <button
+        className="process-button"
+        onClick={GenerateDict}
+        disabled={status === "processing"}
+      >
+        {buttonDict}
+      </button>
 
       <div className="file-wrapper">
         <label className="file-label" htmlFor="fileInput">

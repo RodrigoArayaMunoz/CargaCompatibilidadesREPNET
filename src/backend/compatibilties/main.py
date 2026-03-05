@@ -10,6 +10,9 @@ import pandas as pd
 import openpyxl
 import httpx
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # =========================
 # Config general
 # =========================
@@ -338,3 +341,22 @@ async def get_job(job_id: str):
         message=job["message"],
         progress=job["progress"],
     )
+
+@app.get("/ml/me")
+async def ml_me(user_id: int):
+    token_data = TOKENS_BY_USER.get(int(user_id))
+    if not token_data:
+        raise HTTPException(404, "No hay token guardado para ese user_id")
+
+    access_token = token_data["access_token"]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(
+            "https://api.mercadolibre.com/users/me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(r.status_code, r.text)
+
+    return r.json()
