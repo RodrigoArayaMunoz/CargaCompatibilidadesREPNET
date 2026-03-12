@@ -44,3 +44,6 @@ src/backend/compatibilities/uploads/
 .env
 *.env
 .env.*
+
+tokens.json
+uploads/

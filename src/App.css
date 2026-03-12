@@ -72,6 +72,27 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* Botón */
+.process-button-ml {
+  width: 25%;
+  padding: 14px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffe600);
+  color:#2d3277;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.3px;
+}
+
+.process-button-ml:hover {
+  background: linear-gradient(135deg, #ffe600, #ffe600);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
 .process-button:hover {
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   transform: translateY(-1px);
@@ -132,4 +153,40 @@ body {
   color: #000000;
   text-align: center;
   margin-top: -8px;
+}
+
+.ml-status {
+  margin-top: 14px;
+  margin-bottom: 22px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ml-status.success {
+  color: #1f7a1f;
+}
+
+.ml-status.pending {
+  color: #666;
+}
+
+.disabled-section {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.disabled-label {
+  cursor: not-allowed;
+  background: #9aa3b2;
+}
+
+.process-button:disabled,
+.process-button-ml:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.process-button-ml.connected {
+  background: #2e9f57;
+  color: #fff;
 }
