@@ -3,13 +3,7 @@ import "./ResultModal.css";
 
 const PAGE_SIZE = 20;
 
-useEffect(() => {
-  if (open) {
-    setStatusFilter("ok");
-    setOnlyErrors(false);
-    setSearch("");
-  }
-}, [open]);
+
 
 function flattenResults(results = []) {
   const rows = [];
@@ -348,6 +342,14 @@ export default function ResultModal({ open, onClose, summary, results }) {
 const [search, setSearch] = useState("");
 const [onlyErrors, setOnlyErrors] = useState(false);
 const [statusFilter, setStatusFilter] = useState("ok");
+
+useEffect(() => {
+  if (open) {
+    setStatusFilter("ok");
+    setOnlyErrors(false);
+    setSearch("");
+  }
+}, [open]);
 
   const flatRows = useMemo(() => flattenResults(results || []), [results]);
 

@@ -1259,9 +1259,9 @@ async def process_excel_job_async(job_id: str, user_id: int | str):
 
         job["status"] = "success"
         job["message"] = (
-            f"Proceso finalizado. "
-            f"Filas OK={rows_ok}, filas error={rows_error}, "
-            f"compatibilidades OK={compatibilities_ok}, compatibilidades error={compatibilities_error}"
+            f""
+            f""
+            f""
         )
         job["progress"] = 100
         job["result_path"] = result_path

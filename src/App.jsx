@@ -1,6 +1,6 @@
 import Logo from "/logo.png";
 import "./App.css";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import ResultModal from "./components/ResultModal";
 
 function ProcessingOverlay({ visible, progress = 0, message = "" }) {
@@ -28,6 +28,7 @@ function ProcessingOverlay({ visible, progress = 0, message = "" }) {
 }
 
 function App() {
+  const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -54,6 +55,23 @@ function App() {
   useEffect(() => {
     checkMlConnection();
   }, []);
+
+  const handleCloseResultModal = () => {
+  setShowResultModal(false);
+
+  setFile(null);
+  setJobId(null);
+  setJobResult(null);
+
+  setProgress(0);
+  setProcessMessage("");
+  setStatus("idle");
+  setMessage("");
+
+  if (fileInputRef.current) {
+    fileInputRef.current.value = "";
+  }
+};
 
   const checkMlConnection = async () => {
     try {
@@ -227,8 +245,8 @@ function App() {
           typeof data.progress === "number" ? data.progress : 0;
 
         setProgress(currentProgress);
-        setProcessMessage(data.message || "Procesando...");
-        setMessage(data.message || "Procesando...");
+        setProcessMessage(data.message || "");
+        setMessage(data.message || "");
 
         if (data.status === "success") {
           finished = true;
@@ -369,14 +387,15 @@ function App() {
             📂 Elegir archivo (Excel o CSV)
           </label>
 
-          <input
-            id="fileInput"
-            className="file-input"
-            type="file"
-            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={handleFileChange}
-            disabled={!mlVerified || status === "processing" || checkingConnection}
-          />
+<input
+  ref={fileInputRef}
+  id="fileInput"
+  className="file-input"
+  type="file"
+  accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  onChange={handleFileChange}
+  disabled={!mlVerified || status === "processing" || checkingConnection}
+/>
 
           <span className="file-name">
             {file ? file.name : "Ningún archivo seleccionado"}
@@ -390,13 +409,14 @@ function App() {
         <button
           className="process-button"
           onClick={handleProcess}
-          disabled={
-            !mlVerified ||
-            status === "processing" ||
-            checkingConnection ||
-            loadingResult ||
-            loadingProcess
-          }
+disabled={
+  !mlVerified ||
+  !file ||
+  status === "processing" ||
+  checkingConnection ||
+  loadingResult ||
+  loadingProcess
+}
         >
           {loadingResult
             ? "Cargando resumen..."
@@ -410,12 +430,12 @@ function App() {
         )}
       </div>
 
-      <ResultModal
-        open={showResultModal}
-        onClose={() => setShowResultModal(false)}
-        summary={jobResult?.summary}
-        results={jobResult?.results}
-      />
+<ResultModal
+  open={showResultModal}
+  onClose={handleCloseResultModal}
+  summary={jobResult?.summary}
+  results={jobResult?.results}
+/>
     </>
   );
 }
