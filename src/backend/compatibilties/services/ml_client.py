@@ -31,7 +31,7 @@ class MercadoLibreClient:
         self.client = httpx.AsyncClient(
             timeout=timeout,
             limits=limits,
-            http2=True,
+            http2=False,
             headers={"Accept": "application/json"},
         )
 

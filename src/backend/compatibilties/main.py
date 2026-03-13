@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from config import settings
 from schemas import JobResponse
+from services import job_store
 from services.token_store import token_store, require_ml_env
 from services.job_store import JobStore
 from services.excel_service import save_upload_file, load_excel_rows
@@ -134,42 +135,45 @@ async def ml_logout(user_id: int):
 
 @app.post("/imports-excel", response_model=JobResponse)
 async def upload_excel(file: UploadFile = File(...)):
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos .xlsx")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Archivo inválido")
 
-    job_id = str(uuid.uuid4())
-    xlsx_path = os.path.join(settings.upload_dir, f"{job_id}.xlsx")
-
-    save_upload_file(file, xlsx_path)
-
-    try:
-        load_excel_rows(xlsx_path)
-    except Exception as exc:
-        JobStore.create(job_id, {
-            "status": "error",
-            "message": f"Error leyendo Excel: {str(exc)}",
-            "progress": 0,
-            "xlsx_path": xlsx_path,
-        })
-        job = JobStore.get(job_id)
-        return JobResponse(
-            job_id=job_id,
-            status=job["status"],
-            message=job["message"],
-            progress=job["progress"],
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no permitido. Solo se aceptan archivos .xlsx, .xls o .csv",
         )
 
-    JobStore.create(job_id, {"xlsx_path": xlsx_path})
+    try:
+        job = JobStore.create(file.filename)
 
-    job = JobStore.get(job_id)
-    return JobResponse(
-        job_id=job_id,
-        status=job["status"],
-        message=job["message"],
-        progress=job["progress"],
-    )
+        saved_path = await save_upload_file(file, settings.upload_dir)
+        rows = load_excel_rows(saved_path)
 
+        JobStore.update(
+            job["id"],
+            status="uploaded",
+            message="Archivo cargado correctamente. Listo para procesar.",
+            progress=0,
+            xlsx_path=saved_path,
+            total_rows=len(rows),
+            processed_rows=0,
+        )
+
+        job = JobStore.get(job["id"])
+        if not job:
+            raise HTTPException(status_code=500, detail="No se pudo recuperar el job creado")
+
+        return JobResponse(
+            job_id=job["id"],
+            status=job.get("status", "uploaded"),
+            message=job.get("message", "Archivo cargado correctamente"),
+            progress=job.get("progress", 0),
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al cargar el archivo: {str(e)}")
 
 @app.post("/imports/{job_id}/start", response_model=JobResponse)
 async def start_processing(job_id: str):
@@ -177,8 +181,13 @@ async def start_processing(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job no existe")
 
-    if job["status"] in ("processing", "success"):
-        return JobResponse(job_id=job_id, status=job["status"], message=job["message"], progress=job["progress"])
+    if job.get("status") in ("processing", "success"):
+        return JobResponse(
+            job_id=job_id,
+            status=job.get("status", "pending"),
+            message=job.get("message", ""),
+            progress=job.get("progress", 0),
+        )
 
     if not job.get("xlsx_path"):
         raise HTTPException(status_code=400, detail="Excel no disponible")
@@ -187,25 +196,37 @@ async def start_processing(job_id: str):
     if not user_id:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    JobStore.update(job_id, status="queued", message="Procesamiento en cola...", progress=0)
-    process_excel_job.delay(job_id, str(user_id))
+    JobStore.update(
+        job_id,
+        status="queued",
+        message="Procesamiento en cola...",
+        progress=0,
+    )
+
+    task = process_excel_job.delay(job_id, str(user_id))
+
+    JobStore.update(job_id, task_id=task.id)
 
     job = JobStore.get(job_id)
-    return JobResponse(job_id=job_id, status=job["status"], message=job["message"], progress=job["progress"])
-
+    return JobResponse(
+        job_id=job_id,
+        status=job.get("status", "queued"),
+        message=job.get("message", "Procesamiento en cola..."),
+        progress=job.get("progress", 0),
+    )
 
 @app.get("/imports/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str):
     job = JobStore.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job no existe")
+
     return JobResponse(
         job_id=job_id,
-        status=job["status"],
-        message=job["message"],
-        progress=job["progress"],
+        status=job.get("status", "pending"),
+        message=job.get("message", ""),
+        progress=job.get("progress", 0),
     )
-
 
 @app.get("/imports/{job_id}/result")
 async def get_job_result(job_id: str):
@@ -228,3 +249,16 @@ async def get_job_result(job_id: str):
         "summary": job.get("summary", {}),
         "results": result_data,
     }
+
+@app.get("/imports-excel/{job_id}", response_model=JobResponse)
+async def get_import_status(job_id: str):
+    job = JobStore.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+
+    return JobResponse(
+        job_id=job_id,
+        status=job.get("status", "pending"),
+        message=job.get("message", ""),
+        progress=job.get("progress", 0),
+    )

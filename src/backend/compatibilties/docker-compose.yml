@@ -10,6 +10,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: compat_api
+    working_dir: /code
     ports:
       - "8000:8000"
     volumes:
@@ -25,10 +26,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: compat_worker
+    working_dir: /code
     volumes:
       - .:/code
     env_file:
       - .env
     depends_on:
       - redis
-    command: celery -A celery_app.celery_app worker --loglevel=info
+    command: celery -A celery_app:celery_app worker --loglevel=info

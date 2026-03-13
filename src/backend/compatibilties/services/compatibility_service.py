@@ -33,6 +33,7 @@ async def resolve_brand_id(access_token: str, brand_name: str, caches: JobCaches
     key = normalize_for_compare(brand_name)
     if key in caches.brand:
         return caches.brand[key]
+
     values = await ml_client.get_top_values(access_token, "BRAND")
     value = pick_value_id_by_name(values, brand_name)
     caches.brand[key] = value
@@ -43,6 +44,7 @@ async def resolve_model_id(access_token: str, brand_id: str, model_name: str, ca
     key = (brand_id, normalize_for_compare(model_name))
     if key in caches.model:
         return caches.model[key]
+
     values = await ml_client.get_top_values(
         access_token,
         "CAR_AND_VAN_MODEL",
@@ -57,6 +59,7 @@ async def resolve_year_id(access_token: str, brand_id: str, model_id: str, year:
     key = (brand_id, model_id, year)
     if key in caches.year:
         return caches.year[key]
+
     values = await ml_client.get_top_values(
         access_token,
         "YEAR",
@@ -157,6 +160,7 @@ async def search_vehicle_product_id(
 async def get_item_detail_cached(access_token: str, item_id: str, caches: JobCaches) -> dict:
     if item_id in caches.item_detail:
         return caches.item_detail[item_id]
+
     data = await ml_client.get_item_detail(access_token, item_id)
     caches.item_detail[item_id] = data
     return data
@@ -200,9 +204,20 @@ async def process_vehicle_row(
     user_product_id = item_detail.get("user_product_id")
 
     if not category_id:
-        return {"ok": False, "item_id": item_id, "reason": "El item no devolvió category_id", "results": []}
+        return {
+            "ok": False,
+            "item_id": item_id,
+            "reason": "El item no devolvió category_id",
+            "results": [],
+        }
+
     if not user_product_id:
-        return {"ok": False, "item_id": item_id, "reason": "El item no devolvió user_product_id", "results": []}
+        return {
+            "ok": False,
+            "item_id": item_id,
+            "reason": "El item no devolvió user_product_id",
+            "results": [],
+        }
 
     brand_id = await resolve_brand_id(access_token, brand_name, caches)
     if not brand_id:
@@ -232,12 +247,20 @@ async def process_vehicle_row(
         try:
             year_id = await resolve_year_id(access_token, brand_id, model_id, year, caches)
             if not year_id:
-                results.append({"ok": False, "year": year, "reason": f"No se encontró YEAR para '{year}'"})
+                results.append({
+                    "ok": False,
+                    "year": year,
+                    "reason": f"No se encontró YEAR para '{year}'",
+                })
                 continue
 
             engine_id = await resolve_engine_id(access_token, brand_id, model_id, year_id, engine_name, caches)
             if engine_name and not engine_id:
-                results.append({"ok": False, "year": year, "reason": f"No se encontró ENGINE para '{engine_name}'"})
+                results.append({
+                    "ok": False,
+                    "year": year,
+                    "reason": f"No se encontró ENGINE para '{engine_name}'",
+                })
                 continue
 
             transmission_id = await resolve_transmission_id(
@@ -249,7 +272,11 @@ async def process_vehicle_row(
                 caches,
             )
             if transmission_name and not transmission_id:
-                results.append({"ok": False, "year": year, "reason": f"No se encontró TRANSMISSION para '{transmission_name}'"})
+                results.append({
+                    "ok": False,
+                    "year": year,
+                    "reason": f"No se encontró TRANSMISSION para '{transmission_name}'",
+                })
                 continue
 
             product_id = await search_vehicle_product_id(
@@ -262,7 +289,11 @@ async def process_vehicle_row(
                 caches,
             )
             if not product_id:
-                results.append({"ok": False, "year": year, "reason": "No se encontró product_id"})
+                results.append({
+                    "ok": False,
+                    "year": year,
+                    "reason": "No se encontró product_id",
+                })
                 continue
 
             ml_response = await ml_client.add_user_product_compatibility(
@@ -272,6 +303,7 @@ async def process_vehicle_row(
                 product_id=product_id,
                 creation_source="DEFAULT",
             )
+
             results.append({
                 "ok": True,
                 "year": year,
@@ -280,9 +312,17 @@ async def process_vehicle_row(
             })
 
         except HTTPException as exc:
-            results.append({"ok": False, "year": year, "reason": f"HTTPException: {exc.detail}"})
+            results.append({
+                "ok": False,
+                "year": year,
+                "reason": f"HTTPException: {exc.detail}",
+            })
         except Exception as exc:
-            results.append({"ok": False, "year": year, "reason": f"Exception: {str(exc)}"})
+            results.append({
+                "ok": False,
+                "year": year,
+                "reason": f"Exception: {str(exc)}",
+            })
 
     success_results = [r for r in results if r.get("ok")]
     error_results = [r for r in results if not r.get("ok")]
@@ -311,6 +351,7 @@ async def process_rows_for_job(
 ) -> dict:
     caches = JobCaches()
     semaphore = asyncio.Semaphore(settings.max_row_concurrency)
+    progress_lock = asyncio.Lock()
 
     unique_map: dict[tuple, list[int]] = {}
     unique_rows: list[dict] = []
@@ -322,29 +363,68 @@ async def process_rows_for_job(
             unique_rows.append(row)
         unique_map[key].append(idx)
 
+    total_rows = len(rows)
+    total_unique_rows = len(unique_rows)
+    duplicated_rows = total_rows - total_unique_rows
+
+    if total_unique_rows == 0:
+        JobStore.update_progress(job_id, 95, "No hay filas válidas para procesar")
+        return {
+            "results": [],
+            "summary": {
+                "processed_rows": 0,
+                "unique_rows": 0,
+                "duplicated_rows": 0,
+                "success_count": 0,
+                "error_count": 0,
+                "compatibilities_total": 0,
+                "compatibilities_ok": 0,
+                "compatibilities_error": 0,
+            },
+        }
+
     completed = 0
-    row_results_unique: list[dict] = [None] * len(unique_rows)  # type: ignore
+    row_results_unique: list[dict | None] = [None] * total_unique_rows
 
     async def worker(pos: int, row: dict):
         nonlocal completed
+
         async with semaphore:
             result = await process_vehicle_row(access_token, row, caches)
             row_results_unique[pos] = result
-            completed += 1
-            progress = 10 + int((completed / max(len(unique_rows), 1)) * 85)
-            JobStore.update_progress(
-                job_id,
-                progress,
-                f"Procesadas {completed}/{len(unique_rows)} filas únicas",
-            )
+
+            async with progress_lock:
+                completed += 1
+                progress = 10 + int((completed / total_unique_rows) * 85)
+                JobStore.update_progress(
+                    job_id,
+                    progress,
+                    f"Procesadas {completed}/{total_unique_rows} filas únicas",
+                )
 
     await asyncio.gather(*(worker(i, row) for i, row in enumerate(unique_rows)))
 
-    final_results = [None] * len(rows)
+    final_results: list[dict] = [None] * total_rows  # type: ignore
+
     for unique_pos, row in enumerate(unique_rows):
         key = dedup_key(row)
+        result = row_results_unique[unique_pos] or {
+            "ok": False,
+            "reason": "La fila no devolvió resultado",
+            "results": [],
+        }
+
         for original_idx in unique_map[key]:
-            final_results[original_idx] = row_results_unique[unique_pos]
+            final_results[original_idx] = result
+
+    final_results = [
+        r if r is not None else {
+            "ok": False,
+            "reason": "Resultado faltante",
+            "results": [],
+        }
+        for r in final_results
+    ]
 
     rows_ok = sum(1 for r in final_results if r.get("ok"))
     rows_error = len(final_results) - rows_ok
@@ -352,17 +432,21 @@ async def process_rows_for_job(
     compat_total = 0
     compat_ok = 0
     compat_error = 0
+
     for r in final_results:
         details = r.get("results", [])
         compat_total += len(details)
         compat_ok += sum(1 for d in details if d.get("ok"))
         compat_error += sum(1 for d in details if not d.get("ok"))
 
+    JobStore.update_progress(job_id, 95, "Consolidando resultados finales...")
+
     return {
         "results": final_results,
         "summary": {
-            "processed_rows": len(rows),
-            "unique_rows": len(unique_rows),
+            "processed_rows": total_rows,
+            "unique_rows": total_unique_rows,
+            "duplicated_rows": duplicated_rows,
             "success_count": rows_ok,
             "error_count": rows_error,
             "compatibilities_total": compat_total,
