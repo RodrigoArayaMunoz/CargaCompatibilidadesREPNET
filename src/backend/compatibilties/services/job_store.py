@@ -1,7 +1,7 @@
 import json
 import time
 from typing import Any
-from redis.client import redis_client
+from services.redis_client import redis_client
 
 
 class JobStore:
