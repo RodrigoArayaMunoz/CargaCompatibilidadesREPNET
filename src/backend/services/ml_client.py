@@ -1,0 +1,274 @@
+import asyncio
+import json
+import random
+import time
+from typing import Any
+
+import httpx
+from fastapi import HTTPException
+
+from config import settings
+from services.token_store import token_store, require_ml_env
+from services.excel_service import normalize_for_compare
+
+
+class MercadoLibreClient:
+    def __init__(self) -> None:
+        self.client: httpx.AsyncClient | None = None
+
+    async def startup(self) -> None:
+        timeout = httpx.Timeout(
+            settings.ml_http_timeout,
+            connect=10.0,
+            read=settings.ml_http_timeout,
+            write=30.0,
+            pool=10.0,
+        )
+        limits = httpx.Limits(
+            max_connections=settings.ml_http_max_connections,
+            max_keepalive_connections=settings.ml_http_max_keepalive,
+        )
+        self.client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            http2=True,
+            headers={"Accept": "application/json"},
+        )
+
+    async def shutdown(self) -> None:
+        if self.client:
+            await self.client.aclose()
+
+    async def request(
+        self,
+        method: str,
+        path: str,
+        access_token: str,
+        json_body: dict | None = None,
+        params: dict | None = None,
+    ) -> Any:
+        if not self.client:
+            raise RuntimeError("MercadoLibreClient no inicializado")
+
+        url = f"{settings.ml_api_base}{path}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        if json_body is not None:
+            headers["Content-Type"] = "application/json"
+
+        retryable_status = {429, 500, 502, 503, 504}
+        last_error: Exception | None = None
+
+        for attempt in range(1, settings.ml_retry_attempts + 1):
+            try:
+                response = await self.client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=json_body,
+                    params=params,
+                )
+
+                if response.status_code in retryable_status:
+                    delay = min(2 ** attempt, 8) + random.uniform(0, 0.3)
+                    await asyncio.sleep(delay)
+                    continue
+
+                if response.status_code == 401:
+                    raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+                if response.status_code >= 400:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"ML API error {response.status_code}: {response.text}",
+                    )
+
+                if response.content:
+                    return response.json()
+                return {}
+
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+                last_error = exc
+                delay = min(2 ** attempt, 8) + random.uniform(0, 0.3)
+                await asyncio.sleep(delay)
+
+        raise HTTPException(status_code=502, detail=f"Error de red contra Mercado Libre: {last_error}")
+
+    async def validate_token(self, access_token: str) -> bool:
+        if not self.client or not access_token:
+            return False
+        try:
+            r = await self.client.get(
+                settings.ml_me_url,
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    async def refresh_token(self, user_id: int | str) -> dict:
+        require_ml_env()
+        token_data = token_store.get(user_id)
+        if not token_data:
+            raise HTTPException(status_code=404, detail="No hay token guardado para ese user_id")
+
+        refresh_token = token_data.get("refresh_token")
+        if not refresh_token:
+            token_store.remove(user_id)
+            raise HTTPException(status_code=400, detail="No hay refresh_token guardado")
+
+        if not self.client:
+            raise RuntimeError("MercadoLibreClient no inicializado")
+
+        payload = {
+            "grant_type": "refresh_token",
+            "client_id": settings.ml_client_id,
+            "client_secret": settings.ml_client_secret,
+            "refresh_token": refresh_token,
+        }
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+        }
+
+        r = await self.client.post(settings.ml_token_url, data=payload, headers=headers)
+        if r.status_code >= 400:
+            token_store.remove(user_id)
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+
+        new_token_data = token_store.build_payload(r.json(), user_id)
+        token_store.set(user_id, new_token_data)
+        return new_token_data
+
+    async def get_valid_token(self, user_id: int | str) -> str:
+        token_data = token_store.get(user_id)
+        if not token_data:
+            raise HTTPException(status_code=404, detail="No hay token guardado")
+
+        access_token = token_data.get("access_token")
+        expires_at = int(token_data.get("expires_at", 0))
+        now = int(time.time())
+
+        if not access_token or now >= expires_at:
+            token_data = await self.refresh_token(user_id)
+            access_token = token_data.get("access_token")
+
+        return access_token
+
+    async def get_item_detail(self, access_token: str, item_id: str) -> dict:
+        data = await self.request("GET", f"/items/{item_id}", access_token)
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=500, detail=f"Respuesta inválida para item {item_id}")
+        return data
+
+    async def get_top_values(
+        self,
+        access_token: str,
+        attribute_id: str,
+        known_attributes: list[dict] | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        body = {"limit": limit}
+        if known_attributes:
+            body["known_attributes"] = known_attributes
+
+        data = await self.request(
+            "POST",
+            f"/catalog_domains/{settings.ml_domain_id}/attributes/{attribute_id}/top_values",
+            access_token,
+            json_body=body,
+        )
+        return extract_values_list(data)
+
+    async def search_vehicle_products(
+        self,
+        access_token: str,
+        brand_id: str,
+        model_id: str,
+        year_id: str,
+        transmission_id: str | None = None,
+        engine_id: str | None = None,
+    ) -> list[dict]:
+        known_attributes = [
+            {"id": "BRAND", "value_ids": [brand_id]},
+            {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
+            {"id": "YEAR", "value_ids": [year_id]},
+        ]
+        if engine_id:
+            known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_ids": [engine_id]})
+        if transmission_id:
+            known_attributes.append({"id": "TRANSMISSION_CONTROL_TYPE", "value_ids": [transmission_id]})
+
+        body = {
+            "domain_id": settings.ml_domain_id,
+            "site_id": settings.ml_site_id,
+            "known_attributes": known_attributes,
+            "limit": 10,
+        }
+
+        data = await self.request(
+            "POST",
+            "/catalog_compatibilities/products_search/chunks",
+            access_token,
+            json_body=body,
+        )
+        return extract_values_list(data)
+
+    async def add_user_product_compatibility(
+        self,
+        access_token: str,
+        user_product_id: str,
+        category_id: str,
+        product_id: str,
+        creation_source: str = "DEFAULT",
+    ) -> dict:
+        body = {
+            "domain_id": settings.ml_domain_id,
+            "category_id": category_id,
+            "products": [{"id": product_id, "creation_source": creation_source}],
+        }
+        data = await self.request(
+            "POST",
+            f"/user-products/{user_product_id}/compatibilities",
+            access_token,
+            json_body=body,
+        )
+        return data if isinstance(data, dict) else {"raw_response": data}
+
+
+def extract_values_list(data: Any) -> list[dict]:
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        values = data.get("values")
+        if isinstance(values, list):
+            return [x for x in values if isinstance(x, dict)]
+        results = data.get("results")
+        if isinstance(results, list):
+            return [x for x in results if isinstance(x, dict)]
+    return []
+
+
+def pick_value_id_by_name(values: list[dict], wanted_name: str) -> str | None:
+    wanted = normalize_for_compare(wanted_name)
+    if not wanted:
+        return None
+
+    for item in values:
+        name = normalize_for_compare(item.get("name"))
+        if name == wanted:
+            return str(item.get("id"))
+
+    for item in values:
+        name = normalize_for_compare(item.get("name"))
+        if wanted in name:
+            return str(item.get("id"))
+
+    for item in values:
+        name = normalize_for_compare(item.get("name"))
+        if name and name in wanted:
+            return str(item.get("id"))
+
+    return None
+
+
+ml_client = MercadoLibreClient()
