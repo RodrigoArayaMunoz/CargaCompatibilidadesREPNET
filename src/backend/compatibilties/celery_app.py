@@ -19,4 +19,7 @@ celery_app.conf.update(
     task_soft_time_limit=55 * 60,
     timezone="America/Santiago",
     enable_utc=True,
+    broker_connection_retry_on_startup=True,
+    result_expires=24 * 60 * 60,
+    task_reject_on_worker_lost=True,
 )
