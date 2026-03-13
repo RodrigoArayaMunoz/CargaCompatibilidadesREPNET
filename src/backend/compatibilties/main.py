@@ -48,16 +48,26 @@ ML_DOMAIN_ID = "MLC-CARS_AND_VANS_FOR_COMPATIBILITIES"
 ML_SITE_ID = "MLC"
 
 # =========================
-# COLUMNAS REQUERIDAS
+# COLUMNAS / ALIAS
 # =========================
-COMPAT_REQUIRED_COLUMNS = [
+COLUMN_ALIASES = {
+    "ASOCIACION ML": ["ASOCIACION ML"],
+    "MARCA": ["MARCA", "Marca"],
+    "MODELO": ["MODELO", "Modelo"],
+    "CILINDRADA": ["CILINDRADA", "CILINDRADA ABREVIADA"],
+    "TRANSMISION": ["TRANSMISION"],
+    "DESDE": ["DESDE", "Desde"],
+    "HASTA": ["HASTA", "Hasta"],
+}
+
+COMPAT_REQUIRED_LOGICAL_COLUMNS = [
     "ASOCIACION ML",
-    "Marca",
-    "Modelo",
-    "CILINDRADA ABREVIADA",
+    "MARCA",
+    "MODELO",
+    "CILINDRADA",
     "TRANSMISION",
-    "Desde",
-    "Hasta",
+    "DESDE",
+    "HASTA",
 ]
 
 
@@ -65,10 +75,6 @@ COMPAT_REQUIRED_COLUMNS = [
 # HELPERS TOKENS
 # =========================
 def load_tokens() -> dict:
-    """
-    Carga tokens desde tokens.json.
-    Si no existe o está vacío/corrupto, devuelve {}.
-    """
     try:
         if not os.path.exists(TOKENS_FILE):
             with open(TOKENS_FILE, "w", encoding="utf-8") as f:
@@ -85,43 +91,26 @@ def load_tokens() -> dict:
 
 
 def save_tokens(tokens: dict) -> None:
-    """
-    Guarda tokens en tokens.json.
-    """
     with open(TOKENS_FILE, "w", encoding="utf-8") as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)
 
 
 def get_token_data(user_id: int | str):
-    """
-    Busca token por user_id, considerando que en JSON
-    las keys se guardan como string.
-    """
     return TOKENS_BY_USER.get(str(user_id))
 
 
 def remove_token_data(user_id: int | str) -> None:
-    """
-    Elimina los tokens de un usuario de memoria y disco.
-    """
     TOKENS_BY_USER.pop(str(user_id), None)
     save_tokens(TOKENS_BY_USER)
 
 
 def get_first_user_id() -> str | None:
-    """
-    Devuelve el primer user_id guardado o None.
-    """
     if not TOKENS_BY_USER:
         return None
     return next(iter(TOKENS_BY_USER.keys()))
 
 
 def build_token_payload(token_data: dict, user_id: int | str) -> dict:
-    """
-    Agrega expires_at para saber cuándo refrescar el token.
-    Se deja un margen de 60 segundos.
-    """
     expires_in = int(token_data.get("expires_in", 0))
     token_data["user_id"] = int(user_id)
     token_data["expires_at"] = int(time.time()) + expires_in - 60
@@ -136,11 +125,17 @@ def _require_ml_env():
     if not ML_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Falta ML_REDIRECT_URI en variables de entorno")
 
+def update_job_progress(job_id: str, progress: int, message: str | None = None):
+    job = JOBS.get(job_id)
+    if not job:
+        return
+
+    job["progress"] = max(0, min(100, int(progress)))
+    if message is not None:
+        job["message"] = message
+
 
 async def validate_ml_token(access_token: str) -> bool:
-    """
-    Valida si el access_token realmente sigue sirviendo contra Mercado Libre.
-    """
     if not access_token:
         return False
 
@@ -156,10 +151,6 @@ async def validate_ml_token(access_token: str) -> bool:
 
 
 async def refresh_ml_token_internal(user_id: int | str) -> dict:
-    """
-    Refresca el token de un usuario y lo guarda en memoria y en tokens.json.
-    Mercado Libre devuelve también refresh_token nuevo, y hay que guardarlo.
-    """
     _require_ml_env()
 
     token_data = get_token_data(user_id)
@@ -200,11 +191,6 @@ async def refresh_ml_token_internal(user_id: int | str) -> dict:
 
 
 async def get_valid_ml_token(user_id: int | str) -> str:
-    """
-    Devuelve un access_token válido.
-    Si expiró o ML lo rechaza, intenta refrescar automáticamente.
-    Si no puede recuperarlo, limpia la sesión del usuario.
-    """
     token_data = get_token_data(user_id)
     if not token_data:
         raise HTTPException(status_code=404, detail="No hay token guardado para ese user_id")
@@ -275,20 +261,29 @@ def normalize_year(value: Any) -> int | None:
         return None
 
 
+def build_years_list(desde: Any, hasta: Any) -> list[int]:
+    year_from = normalize_year(desde)
+    year_to = normalize_year(hasta)
+
+    if not year_from:
+        return []
+
+    # Si HASTA viene vacío, nulo, 0 o menor que DESDE,
+    # se procesa solo el año DESDE
+    if not year_to or year_to == 0 or year_to < year_from:
+        return [year_from]
+
+    return list(range(year_from, year_to + 1))
+
+
 def normalize_engine(value: Any) -> str:
-    """
-    Convierte cilindrada a texto flexible para búsqueda.
-    Ej: 2 -> '2.0', 1.6 -> '1.6'
-    """
     if value is None:
         return ""
     try:
         if isinstance(value, float) and math.isnan(value):
             return ""
-        num = float(value)
-        if num.is_integer():
-            return f"{int(num)}.0"
-        return str(num).strip()
+        text = str(value).strip()
+        return text
     except Exception:
         return normalize_text(value)
 
@@ -310,12 +305,27 @@ def normalize_transmission(value: Any) -> str:
 
 
 def extract_item_id(value: Any) -> str:
-    """
-    Toma el ITEM_ID desde ASOCIACION ML.
-    Ej: MLC3727328882
-    """
-    text = normalize_text(value).upper()
-    return text
+    return normalize_text(value).upper()
+
+
+def get_row_value(row: dict, logical_name: str) -> Any:
+    aliases = COLUMN_ALIASES.get(logical_name, [logical_name])
+    for alias in aliases:
+        if alias in row:
+            return row.get(alias)
+    return None
+
+
+def validate_dataframe_columns(df: pd.DataFrame) -> list[str]:
+    missing = []
+    cols = set(str(c).strip() for c in df.columns)
+
+    for logical_col in COMPAT_REQUIRED_LOGICAL_COLUMNS:
+        aliases = COLUMN_ALIASES.get(logical_col, [logical_col])
+        if not any(alias in cols for alias in aliases):
+            missing.append(f"{logical_col} (aliases: {aliases})")
+
+    return missing
 
 
 def debug_print_excel_first15(xlsx_path: str, sheet_name: str = "Hoja1", n_rows: int = 5):
@@ -351,7 +361,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        # "https://tu-frontend.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -370,10 +379,6 @@ TOKENS_BY_USER = load_tokens()
 # =========================
 @app.get("/ml/status")
 async def ml_status():
-    """
-    Devuelve si existe una cuenta ML conectada y con token válido.
-    Si el token expiró, intenta refrescarlo.
-    """
     user_id = get_first_user_id()
     if not user_id:
         return {"connected": False}
@@ -543,7 +548,7 @@ async def ml_request(
     access_token: str,
     json_body: dict | None = None,
     params: dict | None = None,
-) -> dict:
+) -> Any:
     url = f"{ML_API_BASE}{path}"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -563,6 +568,16 @@ async def ml_request(
         )
 
     if r.status_code >= 400:
+
+        print("\n================== ML ERROR ==================")
+        print("METHOD:", method)
+        print("URL:", url)
+        print("PARAMS:", json.dumps(params, ensure_ascii=False, indent=2) if params else None)
+        print("JSON BODY:", json.dumps(json_body, ensure_ascii=False, indent=2) if json_body else None)
+        print("STATUS CODE:", r.status_code)
+        print("RESPONSE TEXT:", r.text)
+        print("=============================================\n")
+    
         raise HTTPException(
             status_code=r.status_code,
             detail=f"ML API error {r.status_code}: {r.text}"
@@ -574,15 +589,36 @@ async def ml_request(
         return {}
 
 
+def extract_values_list(data: Any) -> list[dict]:
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+
+    if isinstance(data, dict):
+        values = data.get("values")
+        if isinstance(values, list):
+            return [x for x in values if isinstance(x, dict)]
+
+        results = data.get("results")
+        if isinstance(results, list):
+            return [x for x in results if isinstance(x, dict)]
+
+    return []
+
+
 async def get_top_values(
     access_token: str,
     attribute_id: str,
     known_attributes: list[dict] | None = None,
-    limit: int = 50,
+    limit: int = 200,
 ) -> list[dict]:
     body = {"limit": limit}
     if known_attributes:
         body["known_attributes"] = known_attributes
+
+    print("\n========== TOP VALUES REQUEST ==========")
+    print("ATTRIBUTE ID:", attribute_id)
+    print(json.dumps(body, ensure_ascii=False, indent=2))
+    print("========================================\n")
 
     data = await ml_request(
         "POST",
@@ -591,7 +627,7 @@ async def get_top_values(
         json_body=body,
     )
 
-    return data.get("values", []) or data.get("results", []) or []
+    return extract_values_list(data)
 
 
 def pick_value_id_by_name(values: list[dict], wanted_name: str) -> str | None:
@@ -599,19 +635,16 @@ def pick_value_id_by_name(values: list[dict], wanted_name: str) -> str | None:
     if not wanted:
         return None
 
-    # match exacto
     for item in values:
         name = normalize_for_compare(item.get("name"))
         if name == wanted:
             return str(item.get("id"))
 
-    # match parcial wanted dentro de name
     for item in values:
         name = normalize_for_compare(item.get("name"))
         if wanted in name:
             return str(item.get("id"))
 
-    # match parcial name dentro de wanted
     for item in values:
         name = normalize_for_compare(item.get("name"))
         if name and name in wanted:
@@ -630,7 +663,7 @@ async def resolve_model_id(access_token: str, brand_id: str, model_name: str) ->
         access_token,
         "CAR_AND_VAN_MODEL",
         known_attributes=[
-            {"id": "BRAND", "value_ids": [brand_id]}
+            {"id": "BRAND", "value_id": brand_id}
         ],
     )
     return pick_value_id_by_name(values, model_name)
@@ -641,33 +674,11 @@ async def resolve_year_id(access_token: str, brand_id: str, model_id: str, year:
         access_token,
         "YEAR",
         known_attributes=[
-            {"id": "BRAND", "value_ids": [brand_id]},
-            {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
+            {"id": "BRAND", "value_id": brand_id},
+            {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
         ],
     )
     return pick_value_id_by_name(values, str(year))
-
-
-async def resolve_transmission_id(
-    access_token: str,
-    brand_id: str,
-    model_id: str,
-    year_id: str,
-    transmission_name: str,
-) -> str | None:
-    if not transmission_name:
-        return None
-
-    values = await get_top_values(
-        access_token,
-        "TRANSMISSION_CONTROL_TYPE",
-        known_attributes=[
-            {"id": "BRAND", "value_ids": [brand_id]},
-            {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
-            {"id": "YEAR", "value_ids": [year_id]},
-        ],
-    )
-    return pick_value_id_by_name(values, transmission_name)
 
 
 async def resolve_engine_id(
@@ -676,22 +687,15 @@ async def resolve_engine_id(
     model_id: str,
     year_id: str,
     engine_name: str,
-    transmission_id: str | None = None,
 ) -> str | None:
     if not engine_name:
         return None
 
     known_attributes = [
-        {"id": "BRAND", "value_ids": [brand_id]},
-        {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
-        {"id": "YEAR", "value_ids": [year_id]},
+        {"id": "BRAND", "value_id": brand_id},
+        {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
+        {"id": "YEAR", "value_id": year_id},
     ]
-
-    if transmission_id:
-        known_attributes.append({
-            "id": "TRANSMISSION_CONTROL_TYPE",
-            "value_ids": [transmission_id]
-        })
 
     values = await get_top_values(
         access_token,
@@ -712,6 +716,28 @@ async def resolve_engine_id(
     return None
 
 
+async def resolve_transmission_id(
+    access_token: str,
+    brand_id: str,
+    model_id: str,
+    year_id: str,
+    transmission_name: str,
+) -> str | None:
+    if not transmission_name:
+        return None
+
+    values = await get_top_values(
+        access_token,
+        "TRANSMISSION_CONTROL_TYPE",
+        known_attributes=[
+            {"id": "BRAND", "value_id": brand_id},
+            {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
+            {"id": "YEAR", "value_id": year_id},
+        ],
+    )
+    return pick_value_id_by_name(values, transmission_name)
+
+
 async def search_vehicle_products(
     access_token: str,
     brand_id: str,
@@ -726,16 +752,16 @@ async def search_vehicle_products(
         {"id": "YEAR", "value_ids": [year_id]},
     ]
 
-    if transmission_id:
-        known_attributes.append({
-            "id": "TRANSMISSION_CONTROL_TYPE",
-            "value_ids": [transmission_id]
-        })
-
     if engine_id:
         known_attributes.append({
             "id": "CAR_AND_VAN_ENGINE",
             "value_ids": [engine_id]
+        })
+
+    if transmission_id:
+        known_attributes.append({
+            "id": "TRANSMISSION_CONTROL_TYPE",
+            "value_ids": [transmission_id]
         })
 
     body = {
@@ -745,6 +771,10 @@ async def search_vehicle_products(
         "limit": 10,
     }
 
+    print("\n======= PRODUCTS SEARCH REQUEST =======")
+    print(json.dumps(body, ensure_ascii=False, indent=2))
+    print("======================================\n")
+
     data = await ml_request(
         "POST",
         "/catalog_compatibilities/products_search/chunks",
@@ -752,7 +782,7 @@ async def search_vehicle_products(
         json_body=body,
     )
 
-    return data.get("results", [])
+    return extract_values_list(data)
 
 
 async def search_vehicle_product_id(
@@ -773,19 +803,35 @@ async def search_vehicle_product_id(
     )
     if not results:
         return None
+
     first = results[0]
     if not first.get("id"):
         return None
+
     return str(first.get("id"))
 
 
-async def add_item_compatibility(
+async def get_item_detail(access_token: str, item_id: str) -> dict:
+    data = await ml_request(
+        "GET",
+        f"/items/{item_id}",
+        access_token,
+    )
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail=f"Respuesta inválida de /items/{item_id}")
+    return data
+
+
+async def add_user_product_compatibility(
     access_token: str,
-    item_id: str,
+    user_product_id: str,
+    category_id: str,
     product_id: str,
-    creation_source: str = "ITEM_SUGGESTIONS",
+    creation_source: str = "DEFAULT",
 ) -> dict:
     body = {
+        "domain_id": ML_DOMAIN_ID,
+        "category_id": category_id,
         "products": [
             {
                 "id": product_id,
@@ -794,128 +840,316 @@ async def add_item_compatibility(
         ]
     }
 
-    return await ml_request(
+    data = await ml_request(
         "POST",
-        f"/items/{item_id}/compatibilities",
+        f"/user-products/{user_product_id}/compatibilities",
         access_token,
         json_body=body,
     )
+
+    if isinstance(data, list):
+        return {"raw_response": data}
+
+    return data if isinstance(data, dict) else {"raw_response": data}
 
 
 # =========================
 # LÓGICA DE PROCESAMIENTO
 # =========================
-async def process_vehicle_row(access_token: str, row: dict) -> dict:
-    item_id = extract_item_id(row.get("ASOCIACION ML"))
-    brand_name = normalize_text(row.get("Marca"))
-    model_name = normalize_text(row.get("Modelo"))
-    engine_name = normalize_engine(row.get("CILINDRADA ABREVIADA"))
-    transmission_name = normalize_transmission(row.get("TRANSMISION"))
-    year_from = normalize_year(row.get("Desde"))
-    year_to = normalize_year(row.get("Hasta"))
+async def process_vehicle_row(
+    access_token: str,
+    row: dict,
+    job_id: str | None = None,
+    row_index: int = 1,
+    total_rows: int = 1,
+) -> dict:
+    def step_progress(step: int, total_steps: int, text: str):
+        if not job_id:
+            return
+
+        base = 10 + ((row_index - 1) / max(total_rows, 1)) * 80
+        row_weight = 80 / max(total_rows, 1)
+        current = base + (step / max(total_steps, 1)) * row_weight
+
+        update_job_progress(
+            job_id,
+            int(current),
+            f"Fila {row_index}/{total_rows} - {text}"
+        )
+
+    total_steps = 8
+
+    item_id = extract_item_id(get_row_value(row, "ASOCIACION ML"))
+    brand_name = normalize_text(get_row_value(row, "MARCA"))
+    model_name = normalize_text(get_row_value(row, "MODELO"))
+    engine_name = normalize_engine(get_row_value(row, "CILINDRADA"))
+    transmission_name = normalize_transmission(get_row_value(row, "TRANSMISION"))
+    years = build_years_list(
+        get_row_value(row, "DESDE"),
+        get_row_value(row, "HASTA")
+    )
+
+    step_progress(1, total_steps, "Validando datos de la fila...")
 
     if not item_id:
-        return {"ok": False, "reason": "Fila sin ASOCIACION ML"}
+        return {
+            "ok": False,
+            "reason": "Fila sin ASOCIACION ML"
+        }
 
-    if not brand_name or not model_name or not year_from:
+    if not brand_name or not model_name or not years:
         return {
             "ok": False,
             "item_id": item_id,
-            "reason": "Faltan datos mínimos: Marca / Modelo / Desde"
+            "reason": "Faltan datos mínimos: MARCA / MODELO / DESDE"
         }
 
-    years = [year_from]
-    if year_to and year_to >= year_from:
-        years = list(range(year_from, year_to + 1))
+    step_progress(2, total_steps, "Consultando detalle del item...")
+    item_detail = await get_item_detail(access_token, item_id)
+    category_id = item_detail.get("category_id")
+    user_product_id = item_detail.get("user_product_id")
 
-    results = []
+    if not category_id:
+        return {
+            "ok": False,
+            "item_id": item_id,
+            "reason": "El item no devolvió category_id"
+        }
 
+    if not user_product_id:
+        return {
+            "ok": False,
+            "item_id": item_id,
+            "reason": "El item no devolvió user_product_id"
+        }
+
+    step_progress(3, total_steps, "Resolviendo marca...")
     brand_id = await resolve_brand_id(access_token, brand_name)
     if not brand_id:
-        return {"ok": False, "item_id": item_id, "reason": f"No se encontró BRAND para '{brand_name}'"}
+        return {
+            "ok": False,
+            "item_id": item_id,
+            "user_product_id": user_product_id,
+            "category_id": category_id,
+            "reason": f"No se encontró BRAND para '{brand_name}'"
+        }
 
+    step_progress(4, total_steps, "Resolviendo modelo...")
     model_id = await resolve_model_id(access_token, brand_id, model_name)
     if not model_id:
-        return {"ok": False, "item_id": item_id, "reason": f"No se encontró MODEL para '{model_name}'"}
-
-    for year in years:
-        year_id = await resolve_year_id(access_token, brand_id, model_id, year)
-        if not year_id:
-            results.append({
-                "ok": False,
-                "item_id": item_id,
-                "year": year,
-                "reason": f"No se encontró YEAR={year}"
-            })
-            continue
-
-        transmission_id = await resolve_transmission_id(
-            access_token, brand_id, model_id, year_id, transmission_name
-        )
-
-        engine_id = await resolve_engine_id(
-            access_token, brand_id, model_id, year_id, engine_name, transmission_id
-        )
-
-        product_id = await search_vehicle_product_id(
-            access_token=access_token,
-            brand_id=brand_id,
-            model_id=model_id,
-            year_id=year_id,
-            transmission_id=transmission_id,
-            engine_id=engine_id,
-        )
-
-        if not product_id:
-            results.append({
-                "ok": False,
-                "item_id": item_id,
-                "year": year,
-                "reason": "No se encontró product_id exacto"
-            })
-            continue
-
-        ml_response = await add_item_compatibility(
-            access_token=access_token,
-            item_id=item_id,
-            product_id=product_id,
-        )
-
-        results.append({
-            "ok": True,
+        return {
+            "ok": False,
             "item_id": item_id,
-            "year": year,
-            "product_id": product_id,
-            "brand_id": brand_id,
-            "model_id": model_id,
-            "year_id": year_id,
-            "transmission_id": transmission_id,
-            "engine_id": engine_id,
-            "ml_response": ml_response,
-        })
+            "user_product_id": user_product_id,
+            "category_id": category_id,
+            "reason": f"No se encontró CAR_AND_VAN_MODEL para '{model_name}'"
+        }
+
+    results = []
+    total_years = len(years)
+
+    for year_idx, year in enumerate(years, start=1):
+        year_suffix = f" ({year_idx}/{total_years})" if total_years > 1 else ""
+
+        try:
+            step_progress(5, total_steps, f"Resolviendo año {year}{year_suffix}...")
+            year_id = await resolve_year_id(access_token, brand_id, model_id, year)
+
+            if not year_id:
+                results.append({
+                    "ok": False,
+                    "item_id": item_id,
+                    "user_product_id": user_product_id,
+                    "category_id": category_id,
+                    "year": year,
+                    "brand_id": brand_id,
+                    "model_id": model_id,
+                    "reason": f"No se encontró YEAR para '{year}'",
+                    "brand_name": brand_name,
+                    "model_name": model_name,
+                })
+                continue
+
+            step_progress(6, total_steps, f"Resolviendo motor y transmisión {year_suffix}...")
+            engine_id = await resolve_engine_id(
+                access_token=access_token,
+                brand_id=brand_id,
+                model_id=model_id,
+                year_id=year_id,
+                engine_name=engine_name,
+            )
+
+            if engine_name and not engine_id:
+                results.append({
+                    "ok": False,
+                    "item_id": item_id,
+                    "user_product_id": user_product_id,
+                    "category_id": category_id,
+                    "year": year,
+                    "brand_id": brand_id,
+                    "model_id": model_id,
+                    "year_id": year_id,
+                    "reason": f"No se encontró CAR_AND_VAN_ENGINE para '{engine_name}'",
+                    "brand_name": brand_name,
+                    "model_name": model_name,
+                })
+                continue
+
+            transmission_id = await resolve_transmission_id(
+                access_token=access_token,
+                brand_id=brand_id,
+                model_id=model_id,
+                year_id=year_id,
+                transmission_name=transmission_name,
+            )
+
+            if transmission_name and not transmission_id:
+                results.append({
+                    "ok": False,
+                    "item_id": item_id,
+                    "user_product_id": user_product_id,
+                    "category_id": category_id,
+                    "year": year,
+                    "brand_id": brand_id,
+                    "model_id": model_id,
+                    "year_id": year_id,
+                    "engine_id": engine_id,
+                    "reason": f"No se encontró TRANSMISSION_CONTROL_TYPE para '{transmission_name}'",
+                    "brand_name": brand_name,
+                    "model_name": model_name,
+                })
+                continue
+
+            step_progress(7, total_steps, f"Buscando producto compatible {year_suffix}...")
+            product_id = await search_vehicle_product_id(
+                access_token=access_token,
+                brand_id=brand_id,
+                model_id=model_id,
+                year_id=year_id,
+                transmission_id=transmission_id,
+                engine_id=engine_id,
+            )
+
+            if not product_id:
+                results.append({
+                    "ok": False,
+                    "item_id": item_id,
+                    "user_product_id": user_product_id,
+                    "category_id": category_id,
+                    "year": year,
+                    "brand_id": brand_id,
+                    "model_id": model_id,
+                    "year_id": year_id,
+                    "engine_id": engine_id,
+                    "transmission_id": transmission_id,
+                    "reason": "No se encontró product_id en products_search/chunks",
+                    "brand_name": brand_name,
+                    "model_name": model_name,
+                })
+                continue
+
+            step_progress(8, total_steps, f"Grabando compatibilidad para año {year}{year_suffix}...")
+            ml_response = await add_user_product_compatibility(
+                access_token=access_token,
+                user_product_id=str(user_product_id),
+                category_id=str(category_id),
+                product_id=product_id,
+                creation_source="DEFAULT",
+            )
+
+            results.append({
+                "ok": True,
+                "item_id": item_id,
+                "user_product_id": user_product_id,
+                "category_id": category_id,
+                "year": year,
+                "product_id": product_id,
+                "brand_id": brand_id,
+                "model_id": model_id,
+                "year_id": year_id,
+                "engine_id": engine_id,
+                "transmission_id": transmission_id,
+                "brand_name": brand_name,
+                "model_name": model_name,
+                "request_body": {
+                    "domain_id": ML_DOMAIN_ID,
+                    "category_id": category_id,
+                    "products": [
+                        {
+                            "id": product_id,
+                            "creation_source": "DEFAULT"
+                        }
+                    ]
+                },
+                "ml_response": ml_response,
+            })
+
+        except HTTPException as e:
+            results.append({
+                "ok": False,
+                "item_id": item_id,
+                "user_product_id": user_product_id,
+                "category_id": category_id,
+                "year": year,
+                "reason": f"HTTPException procesando año {year}: {e.detail}",
+                "brand_name": brand_name,
+                "model_name": model_name,
+            })
+            continue
+
+        except Exception as e:
+            results.append({
+                "ok": False,
+                "item_id": item_id,
+                "user_product_id": user_product_id,
+                "category_id": category_id,
+                "year": year,
+                "reason": f"Exception procesando año {year}: {str(e)}",
+                "brand_name": brand_name,
+                "model_name": model_name,
+            })
+            continue
+
+    success_results = [r for r in results if r.get("ok")]
+    error_results = [r for r in results if not r.get("ok")]
+
+    success_results = [r for r in results if r.get("ok")]
+    error_results = [r for r in results if not r.get("ok")]
 
     return {
-        "ok": any(r["ok"] for r in results),
+        "ok": len(success_results) > 0,
         "item_id": item_id,
+        "brand_name": brand_name,
+        "model_name": model_name,
+        "engine_name": engine_name,
+        "transmission_name": transmission_name,
+        "user_product_id": user_product_id,
+        "category_id": category_id,
+        "years_requested": years,
+        "years_processed": len(results),
+        "success_count": len(success_results),
+        "error_count": len(error_results),
         "results": results,
     }
-
 
 async def process_excel_job_async(job_id: str, user_id: int | str):
     job = JOBS[job_id]
     xlsx_path = job["xlsx_path"]
 
     job["status"] = "processing"
-    job["message"] = "Leyendo Excel y resolviendo compatibilidades..."
+    job["message"] = "Preparando procesamiento..."
     job["progress"] = 0
 
     try:
+        update_job_progress(job_id, 2, "Validando sesión con Mercado Libre...")
         access_token = await get_valid_ml_token(user_id)
 
+        update_job_progress(job_id, 5, "Leyendo archivo Excel...")
         df = pd.read_excel(xlsx_path, sheet_name="Hoja1", engine="openpyxl")
         df.columns = [str(c).strip() for c in df.columns]
 
-        missing = [c for c in COMPAT_REQUIRED_COLUMNS if c not in df.columns]
+        update_job_progress(job_id, 8, "Validando columnas requeridas...")
+        missing = validate_dataframe_columns(df)
         if missing:
             job["status"] = "error"
             job["message"] = f"Faltan columnas requeridas: {missing}"
@@ -929,40 +1163,95 @@ async def process_excel_job_async(job_id: str, user_id: int | str):
             job["progress"] = 0
             return
 
+        update_job_progress(
+            job_id,
+            10,
+            f"Comenzando procesamiento de {total_rows} fila(s)..."
+        )
+
         output_rows = []
-        success_count = 0
-        error_count = 0
+
+        # Resumen por fila Excel
+        rows_ok = 0
+        rows_error = 0
+
+        # Resumen por compatibilidad real
+        compatibilities_total = 0
+        compatibilities_ok = 0
+        compatibilities_error = 0
 
         for idx, (_, row) in enumerate(df.iterrows(), start=1):
             row_data = row.to_dict()
 
+            update_job_progress(
+                job_id,
+                max(10, int(((idx - 1) / max(total_rows, 1)) * 90)),
+                f"Preparando fila {idx}/{total_rows}..."
+            )
+
             try:
-                result = await process_vehicle_row(access_token, row_data)
+                result = await process_vehicle_row(
+                    access_token=access_token,
+                    row=row_data,
+                    job_id=job_id,
+                    row_index=idx,
+                    total_rows=total_rows,
+                )
             except HTTPException as e:
                 result = {
                     "ok": False,
-                    "item_id": extract_item_id(row_data.get("ASOCIACION ML")),
-                    "reason": f"HTTPException: {e.detail}"
+                    "item_id": extract_item_id(get_row_value(row_data, "ASOCIACION ML")),
+                    "brand_name": normalize_text(get_row_value(row_data, "MARCA")),
+                    "model_name": normalize_text(get_row_value(row_data, "MODELO")),
+                    "engine_name": normalize_engine(get_row_value(row_data, "CILINDRADA")),
+                    "transmission_name": normalize_transmission(get_row_value(row_data, "TRANSMISION")),
+                    "reason": f"HTTPException: {e.detail}",
+                    "results": []
                 }
             except Exception as e:
                 result = {
                     "ok": False,
-                    "item_id": extract_item_id(row_data.get("ASOCIACION ML")),
-                    "reason": f"Exception: {str(e)}"
+                    "item_id": extract_item_id(get_row_value(row_data, "ASOCIACION ML")),
+                    "brand_name": normalize_text(get_row_value(row_data, "MARCA")),
+                    "model_name": normalize_text(get_row_value(row_data, "MODELO")),
+                    "engine_name": normalize_engine(get_row_value(row_data, "CILINDRADA")),
+                    "transmission_name": normalize_transmission(get_row_value(row_data, "TRANSMISION")),
+                    "reason": f"Exception: {str(e)}",
+                    "results": []
                 }
 
             output_rows.append(result)
 
+            # Conteo por fila
             if result.get("ok"):
-                success_count += 1
+                rows_ok += 1
             else:
-                error_count += 1
+                rows_error += 1
 
-            job["progress"] = int(idx * 100 / max(total_rows, 1))
-            job["message"] = (
-                f"Procesando fila {idx}/{total_rows} | "
-                f"ok={success_count} | error={error_count}"
+            # Conteo por compatibilidad real
+            detail_results = result.get("results", [])
+            if isinstance(detail_results, list) and detail_results:
+                compatibilities_total += len(detail_results)
+                compatibilities_ok += sum(1 for d in detail_results if d.get("ok"))
+                compatibilities_error += sum(1 for d in detail_results if not d.get("ok"))
+            else:
+                # Si no hubo detalle, tratamos la fila fallida como 1 error lógico
+                if not result.get("ok"):
+                    compatibilities_total += 1
+                    compatibilities_error += 1
+
+            progress_after_row = 10 + int((idx / max(total_rows, 1)) * 80)
+            update_job_progress(
+                job_id,
+                progress_after_row,
+                (
+                    f"Procesadas {idx}/{total_rows} fila(s) | "
+                    f"filas ok={rows_ok} | filas error={rows_error} | "
+                    f"compat ok={compatibilities_ok} | compat error={compatibilities_error}"
+                )
             )
+
+        update_job_progress(job_id, 95, "Guardando resultado final...")
 
         result_path = os.path.join(UPLOAD_DIR, f"{job_id}_resultado.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -971,14 +1260,26 @@ async def process_excel_job_async(job_id: str, user_id: int | str):
         job["status"] = "success"
         job["message"] = (
             f"Proceso finalizado. "
-            f"Compatibilidades OK={success_count}, errores={error_count}"
+            f"Filas OK={rows_ok}, filas error={rows_error}, "
+            f"compatibilidades OK={compatibilities_ok}, compatibilidades error={compatibilities_error}"
         )
         job["progress"] = 100
         job["result_path"] = result_path
         job["summary"] = {
+            # Resumen por filas del Excel
             "processed_rows": total_rows,
-            "success_count": success_count,
-            "error_count": error_count,
+            "success_count": rows_ok,
+            "error_count": rows_error,
+
+            # Resumen por compatibilidades reales
+            "compatibilities_total": compatibilities_total,
+            "compatibilities_ok": compatibilities_ok,
+            "compatibilities_error": compatibilities_error,
+
+            # Métricas extra útiles
+            "items_processed": len(output_rows),
+            "items_with_success": sum(1 for r in output_rows if r.get("ok")),
+            "items_with_error": sum(1 for r in output_rows if not r.get("ok")),
         }
 
     except Exception as e:
@@ -1015,7 +1316,7 @@ async def upload_excel(file: UploadFile = File(...)):
     try:
         df = pd.read_excel(xlsx_path, sheet_name="Hoja1", engine="openpyxl")
         df.columns = [str(c).strip() for c in df.columns]
-        missing = [c for c in COMPAT_REQUIRED_COLUMNS if c not in df.columns]
+        missing = validate_dataframe_columns(df)
         if missing:
             raise ValueError(f"Faltan columnas requeridas: {missing}")
     except Exception as e:
@@ -1135,14 +1436,10 @@ async def get_job_result(job_id: str):
 
 
 # =========================
-# ENDPOINT ÚTIL DE PRUEBA DIRECTA
+# ENDPOINTS DE PRUEBA / DEBUG
 # =========================
 @app.post("/compatibilities/test-one-row")
 async def compatibilities_test_one_row(user_id: int):
-    """
-    Procesa solo la primera fila válida del último Excel que tengas cargado,
-    para probar el flujo completo sin recorrer todo el archivo.
-    """
     access_token = await get_valid_ml_token(user_id)
 
     latest_job = None
@@ -1157,7 +1454,7 @@ async def compatibilities_test_one_row(user_id: int):
     df = pd.read_excel(xlsx_path, sheet_name="Hoja1", engine="openpyxl")
     df.columns = [str(c).strip() for c in df.columns]
 
-    missing = [c for c in COMPAT_REQUIRED_COLUMNS if c not in df.columns]
+    missing = validate_dataframe_columns(df)
     if missing:
         raise HTTPException(status_code=400, detail=f"Faltan columnas: {missing}")
 
@@ -1171,4 +1468,18 @@ async def compatibilities_test_one_row(user_id: int):
         "ok": True,
         "input_row": first_row,
         "result": result,
+    }
+
+
+@app.get("/compatibilities/item-debug")
+async def compatibilities_item_debug(user_id: int, item_id: str):
+    access_token = await get_valid_ml_token(user_id)
+    item_detail = await get_item_detail(access_token, item_id)
+
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "category_id": item_detail.get("category_id"),
+        "user_product_id": item_detail.get("user_product_id"),
+        "full_item": item_detail,
     }

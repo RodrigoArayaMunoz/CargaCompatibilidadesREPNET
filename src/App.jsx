@@ -3,6 +3,30 @@ import "./App.css";
 import { useEffect, useState } from "react";
 import ResultModal from "./components/ResultModal";
 
+function ProcessingOverlay({ visible, progress = 0, message = "" }) {
+  if (!visible) return null;
+
+  return (
+    <div className="processing-overlay">
+      <div className="processing-box">
+        <div className="processing-spinner" />
+        <h2>Procesando compatibilidades</h2>
+        <p className="processing-progress">{progress}%</p>
+        <p className="processing-message">
+          {message || "Procesando archivo..."}
+        </p>
+
+        <div className="processing-bar">
+          <div
+            className="processing-bar-fill"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("idle");
@@ -16,8 +40,13 @@ function App() {
   );
 
   const [jobResult, setJobResult] = useState(null);
-  const [showResultModal, setShowResultModal] = useState(false);
   const [loadingResult, setLoadingResult] = useState(false);
+
+  const [jobId, setJobId] = useState(null);
+  const [loadingProcess, setLoadingProcess] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [processMessage, setProcessMessage] = useState("");
+  const [showResultModal, setShowResultModal] = useState(false);
 
   const API_BASE =
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -88,15 +117,20 @@ function App() {
 
     if (!isExcelFile(selectedFile) && !isCsvFile(selectedFile)) {
       setFile(null);
+      setJobId(null);
       setStatus("error");
       setMessage("Archivo no válido. Selecciona un Excel (.xlsx) o CSV (.csv).");
       return;
     }
 
     setFile(selectedFile);
+    setJobId(null);
     setStatus("idle");
     setMessage("");
     setJobResult(null);
+    setShowResultModal(false);
+    setProgress(0);
+    setProcessMessage("");
   };
 
   const uploadFile = async (fileToUpload) => {
@@ -128,8 +162,8 @@ function App() {
     return data.job_id;
   };
 
-  const startJob = async (jobId) => {
-    const res = await fetch(`${API_BASE}/imports/${jobId}/start`, {
+  const startJob = async (currentJobId) => {
+    const res = await fetch(`${API_BASE}/imports/${currentJobId}/start`, {
       method: "POST",
       credentials: "include",
     });
@@ -150,74 +184,94 @@ function App() {
     return data;
   };
 
-  const fetchJobResult = async (jobId) => {
-    setLoadingResult(true);
+  const fetchJobResult = async (currentJobId) => {
+    const res = await fetch(`${API_BASE}/imports/${currentJobId}/result`, {
+      method: "GET",
+      credentials: "include",
+    });
 
-    try {
-      const res = await fetch(`${API_BASE}/imports/${jobId}/result`, {
-        method: "GET",
-        credentials: "include",
-      });
+    const data = await res.json().catch(() => ({}));
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          data?.detail || data?.message || "No se pudo obtener el resultado final."
-        );
-      }
-
-      setJobResult(data);
-      setShowResultModal(true);
-    } catch (error) {
-      setMessage(
-        error?.message || "El proceso terminó, pero no se pudo obtener el resumen."
+    if (!res.ok) {
+      throw new Error(
+        data?.detail || data?.message || "No se pudo obtener el resultado final."
       );
-    } finally {
-      setLoadingResult(false);
     }
+
+    setJobResult(data);
+    setShowResultModal(true);
   };
 
-  const pollJob = async (jobId) => {
-    const poll = async () => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollJob = async (currentJobId) => {
+    let finished = false;
+
+    while (!finished) {
       try {
-        const r = await fetch(`${API_BASE}/imports/${jobId}`, {
+        const r = await fetch(`${API_BASE}/imports/${currentJobId}`, {
           credentials: "include",
         });
 
         const data = await r.json().catch(() => ({}));
 
         if (!r.ok) {
+          setLoadingProcess(false);
+          setLoadingResult(false);
           setStatus("error");
           setMessage("Error consultando el estado del proceso.");
           return;
         }
 
-        const progressText =
-          typeof data.progress === "number" ? ` (${data.progress}%)` : "";
-        setMessage(`${data.message || "Procesando..."}${progressText}`);
+        const currentProgress =
+          typeof data.progress === "number" ? data.progress : 0;
+
+        setProgress(currentProgress);
+        setProcessMessage(data.message || "Procesando...");
+        setMessage(data.message || "Procesando...");
 
         if (data.status === "success") {
+          finished = true;
+          setProgress(100);
+          //setProcessMessage("Archivo procesado exitosamente. Cargando resumen final...");
+          //setMessage("Archivo procesado exitosamente. Cargando resumen final...");
           setStatus("success");
-          setMessage("Archivo procesado exitosamente. Cargando resumen final...");
-          await fetchJobResult(jobId);
+
+          try {
+            setLoadingResult(true);
+            await fetchJobResult(currentJobId);
+          } catch (error) {
+            setStatus("error");
+            setMessage(
+              error?.message ||
+                "El proceso terminó, pero no se pudo obtener el resumen."
+            );
+          } finally {
+            setLoadingResult(false);
+            setLoadingProcess(false);
+          }
+
           return;
         }
 
         if (data.status === "error") {
+          finished = true;
+          setLoadingProcess(false);
+          setLoadingResult(false);
           setStatus("error");
           setMessage(data.message || "Ocurrió un error al procesar el archivo.");
           return;
         }
 
-        setTimeout(poll, 1500);
+        await sleep(1200);
       } catch (err) {
+        setLoadingProcess(false);
+        setLoadingResult(false);
         setStatus("error");
         setMessage("Error de red consultando el estado del proceso.");
+        return;
       }
-    };
-
-    poll();
+    }
   };
 
   const handleProcess = async () => {
@@ -237,17 +291,26 @@ function App() {
       setShowResultModal(false);
       setJobResult(null);
       setStatus("processing");
+      setLoadingProcess(true);
+      setLoadingResult(false);
+      setProgress(0);
+      setProcessMessage("Subiendo archivo...");
+      setMessage("");
 
       const isExcel = file.name.toLowerCase().endsWith(".xlsx");
-      setMessage(isExcel ? "Subiendo Excel y convirtiendo..." : "Subiendo CSV...");
+      setProcessMessage(isExcel ? "Subiendo Excel..." : "Subiendo CSV...");
 
-      const jobId = await uploadFile(file);
+      const newJobId = await uploadFile(file);
+      setJobId(newJobId);
 
-      setMessage("Iniciando procesamiento...");
-      await startJob(jobId);
+      setProgress(5);
+      setProcessMessage("Iniciando procesamiento...");
+      await startJob(newJobId);
 
-      pollJob(jobId);
+      await pollJob(newJobId);
     } catch (error) {
+      setLoadingProcess(false);
+      setLoadingResult(false);
       setStatus("error");
       setMessage(error?.message || "Ocurrió un error al procesar el archivo.");
     }
@@ -276,6 +339,12 @@ function App() {
 
   return (
     <>
+      <ProcessingOverlay
+        visible={loadingProcess}
+        progress={progress}
+        message={processMessage}
+      />
+
       <div className="container">
         <h1 className="title">Carga de Compatibilidades</h1>
         <img src={Logo} alt="Logo" className="logo" />
@@ -325,13 +394,20 @@ function App() {
             !mlVerified ||
             status === "processing" ||
             checkingConnection ||
-            loadingResult
+            loadingResult ||
+            loadingProcess
           }
         >
-          {loadingResult ? "Cargando resumen..." : buttonText}
+          {loadingResult
+            ? "Cargando resumen..."
+            : loadingProcess
+            ? "Procesando..."
+            : buttonText}
         </button>
 
-        {message && <p className={`status-message ${status}`}>{message}</p>}
+        {message && !loadingProcess && (
+          <p className={`status-message ${status}`}>{message}</p>
+        )}
       </div>
 
       <ResultModal
