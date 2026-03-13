@@ -2,13 +2,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "development"
     frontend_url: str = "http://localhost:5173"
     upload_dir: str = "uploads"
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://redis:6379/0"
     tokens_file: str = "tokens.json"
 
     ml_client_id: str | None = None
@@ -22,11 +21,25 @@ class Settings(BaseSettings):
     ml_domain_id: str = "MLC-CARS_AND_VANS_FOR_COMPATIBILITIES"
     ml_site_id: str = "MLC"
 
-    max_row_concurrency: int = 8
-    ml_http_max_connections: int = 100
-    ml_http_max_keepalive: int = 20
-    ml_http_timeout: int = 60
-    ml_retry_attempts: int = 5
+    # HTTP client
+    ml_http_timeout: float = 30.0
+    ml_http_max_connections: int = 20
+    ml_http_max_keepalive: int = 10
+
+    # Retry / rate limit
+    ml_retry_attempts: int = 4
+    ml_retry_base_delay: float = 1.0
+    ml_requests_per_second: float = 2.0
+
+    # Procesamiento
+    max_row_concurrency: int = 3
+    job_progress_update_every: int = 25
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

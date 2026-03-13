@@ -1,5 +1,4 @@
 import asyncio
-import json
 import random
 import time
 from typing import Any
@@ -8,8 +7,8 @@ import httpx
 from fastapi import HTTPException
 
 from config import settings
-from services.token_store import token_store, require_ml_env
 from services.excel_service import normalize_for_compare
+from services.token_store import require_ml_env, token_store
 
 
 class MercadoLibreClient:
@@ -17,6 +16,9 @@ class MercadoLibreClient:
         self.client: httpx.AsyncClient | None = None
 
     async def startup(self) -> None:
+        if self.client is not None:
+            return
+
         timeout = httpx.Timeout(
             settings.ml_http_timeout,
             connect=10.0,
@@ -28,6 +30,7 @@ class MercadoLibreClient:
             max_connections=settings.ml_http_max_connections,
             max_keepalive_connections=settings.ml_http_max_keepalive,
         )
+
         self.client = httpx.AsyncClient(
             timeout=timeout,
             limits=limits,
@@ -36,8 +39,9 @@ class MercadoLibreClient:
         )
 
     async def shutdown(self) -> None:
-        if self.client:
+        if self.client is not None:
             await self.client.aclose()
+            self.client = None
 
     async def request(
         self,
@@ -51,7 +55,10 @@ class MercadoLibreClient:
             raise RuntimeError("MercadoLibreClient no inicializado")
 
         url = f"{settings.ml_api_base}{path}"
-        headers = {"Authorization": f"Bearer {access_token}"}
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
         if json_body is not None:
             headers["Content-Type"] = "application/json"
 
@@ -69,7 +76,13 @@ class MercadoLibreClient:
                 )
 
                 if response.status_code in retryable_status:
-                    delay = min(2 ** attempt, 8) + random.uniform(0, 0.3)
+                    if attempt == settings.ml_retry_attempts:
+                        raise HTTPException(
+                            status_code=response.status_code,
+                            detail=f"ML API error {response.status_code}: {response.text}",
+                        )
+
+                    delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
                     await asyncio.sleep(delay)
                     continue
 
@@ -82,13 +95,31 @@ class MercadoLibreClient:
                         detail=f"ML API error {response.status_code}: {response.text}",
                     )
 
-                if response.content:
+                if not response.content:
+                    return {}
+
+                content_type = response.headers.get("content-type", "")
+                if "application/json" in content_type.lower():
                     return response.json()
-                return {}
+
+                return {"raw_response": response.text}
 
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
                 last_error = exc
-                delay = min(2 ** attempt, 8) + random.uniform(0, 0.3)
+
+                if attempt == settings.ml_retry_attempts:
+                    break
+
+                delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
+                await asyncio.sleep(delay)
+
+            except httpx.HTTPError as exc:
+                last_error = exc
+
+                if attempt == settings.ml_retry_attempts:
+                    break
+
+                delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
                 await asyncio.sleep(delay)
 
         raise HTTPException(status_code=502, detail=f"Error de red contra Mercado Libre: {last_error}")
@@ -99,7 +130,7 @@ class MercadoLibreClient:
         try:
             r = await self.client.get(
                 settings.ml_me_url,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
             return r.status_code == 200
         except Exception:
@@ -107,6 +138,7 @@ class MercadoLibreClient:
 
     async def refresh_token(self, user_id: int | str) -> dict:
         require_ml_env()
+
         token_data = token_store.get(user_id)
         if not token_data:
             raise HTTPException(status_code=404, detail="No hay token guardado para ese user_id")
@@ -152,6 +184,9 @@ class MercadoLibreClient:
             token_data = await self.refresh_token(user_id)
             access_token = token_data.get("access_token")
 
+        if not access_token:
+            raise HTTPException(status_code=401, detail="No se pudo obtener access_token válido")
+
         return access_token
 
     async def get_item_detail(self, access_token: str, item_id: str) -> dict:
@@ -193,8 +228,10 @@ class MercadoLibreClient:
             {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
             {"id": "YEAR", "value_ids": [year_id]},
         ]
+
         if engine_id:
             known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_ids": [engine_id]})
+
         if transmission_id:
             known_attributes.append({"id": "TRANSMISSION_CONTROL_TYPE", "value_ids": [transmission_id]})
 
@@ -226,6 +263,7 @@ class MercadoLibreClient:
             "category_id": category_id,
             "products": [{"id": product_id, "creation_source": creation_source}],
         }
+
         data = await self.request(
             "POST",
             f"/user-products/{user_product_id}/compatibilities",
@@ -238,13 +276,16 @@ class MercadoLibreClient:
 def extract_values_list(data: Any) -> list[dict]:
     if isinstance(data, list):
         return [x for x in data if isinstance(x, dict)]
+
     if isinstance(data, dict):
         values = data.get("values")
         if isinstance(values, list):
             return [x for x in values if isinstance(x, dict)]
+
         results = data.get("results")
         if isinstance(results, list):
             return [x for x in results if isinstance(x, dict)]
+
     return []
 
 
