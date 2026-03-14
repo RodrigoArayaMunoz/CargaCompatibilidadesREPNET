@@ -355,6 +355,10 @@ function App() {
     ? ""
     : mlStatusMessage;
 
+    const handleViewPublicationsWithoutCompatibilities = () => {
+  window.location.href = `${API_BASE}/publicaciones-sin-compatibilidades`;
+};
+
   return (
     <>
       <ProcessingOverlay
@@ -406,24 +410,34 @@ function App() {
           </small>
         </div>
 
-        <button
-          className="process-button"
-          onClick={handleProcess}
-disabled={
-  !mlVerified ||
-  !file ||
-  status === "processing" ||
-  checkingConnection ||
-  loadingResult ||
-  loadingProcess
-}
-        >
-          {loadingResult
-            ? "Cargando resumen..."
-            : loadingProcess
-            ? "Procesando..."
-            : buttonText}
-        </button>
+<div className="actions-row">
+  <button
+    className="process-button"
+    onClick={handleProcess}
+    disabled={
+      !mlVerified ||
+      !file ||
+      status === "processing" ||
+      checkingConnection ||
+      loadingResult ||
+      loadingProcess
+    }
+  >
+    {loadingResult
+      ? "Cargando resumen..."
+      : loadingProcess
+      ? "Procesando..."
+      : buttonText}
+  </button>
+
+  <button
+    className="process-button secondary-action-button"
+    onClick={handleViewPublicationsWithoutCompatibilities}
+    disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
+  >
+    Ver Publicaciones sin compatibilidades
+  </button>
+</div>
 
         {message && !loadingProcess && (
           <p className={`status-message ${status}`}>{message}</p>

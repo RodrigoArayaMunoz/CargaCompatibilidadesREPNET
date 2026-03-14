@@ -262,3 +262,21 @@ body {
     transform: rotate(360deg);
   }
 }
+
+.actions-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.actions-row .process-button {
+  margin-top: 0;
+  width: 200px;
+}
+
+.secondary-action-button {
+  min-width: 320px;
+}
