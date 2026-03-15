@@ -11,7 +11,7 @@ class MlPublicationsService:
     MAX_PAGE_SIZE = 20
     SCAN_LIMIT = 100
     MULTIGET_CHUNK_SIZE = 20
-    MULTIGET_CONCURRENCY = 12
+    MULTIGET_CONCURRENCY = 16
     CACHE_TTL_SECONDS = 600
     STALE_WHILE_REVALIDATE_SECONDS = 1800
 
@@ -188,40 +188,70 @@ class MlPublicationsService:
     ) -> list[dict[str, str]]:
         started_at = time.time()
 
+        old_cache = self._cache.get(seller_id, {})
+        old_items = old_cache.get("items", []) if isinstance(old_cache.get("items"), list) else []
+        old_by_mlc = {item["mlc"]: item for item in old_items if item.get("mlc")}
+
         mlc_ids = await self._scan_incomplete_compatibility_ids(
             seller_id=seller_id,
             access_token=access_token,
         )
 
-        items = await self._get_items_titles_multiget_concurrent(
-            mlc_ids=mlc_ids,
+        current_mlc_set = set(mlc_ids)
+
+        # Reutilizar títulos ya cacheados
+        reused_items = []
+        missing_ids = []
+
+        for mlc in mlc_ids:
+            cached_item = old_by_mlc.get(mlc)
+            if cached_item:
+                reused_items.append({
+                    "mlc": cached_item["mlc"],
+                    "title": cached_item.get("title", ""),
+                })
+            else:
+                missing_ids.append(mlc)
+
+        # Solo pedir a ML los títulos nuevos/faltantes
+        fetched_items = await self._get_items_titles_multiget_concurrent(
+            mlc_ids=missing_ids,
             access_token=access_token,
         )
 
-        deduped_items: list[dict[str, str]] = []
+        fetched_by_mlc = {item["mlc"]: item for item in fetched_items if item.get("mlc")}
+
+        # Reconstruir respetando el orden del scan actual
+        final_items: list[dict[str, str]] = []
         seen: set[str] = set()
-        for item in items:
-            mlc = item.get("mlc")
-            if not mlc or mlc in seen:
+
+        for mlc in mlc_ids:
+            item = old_by_mlc.get(mlc) or fetched_by_mlc.get(mlc)
+            if not item or mlc in seen:
                 continue
             seen.add(mlc)
-            deduped_items.append(item)
+            final_items.append({
+                "mlc": str(item["mlc"]),
+                "title": str(item.get("title", "")),
+            })
 
         now = time.time()
         self._cache[seller_id] = {
             "generated_at": started_at,
             "expires_at": now + self.CACHE_TTL_SECONDS,
             "stale_expires_at": now + self.STALE_WHILE_REVALIDATE_SECONDS,
-            "items": deduped_items,
+            "items": final_items,
             "state": "fresh",
         }
 
         print(
             f"[ml_publications_service] cache rebuilt seller={seller_id} "
-            f"items={len(deduped_items)} elapsed={round(now - started_at, 2)}s"
+            f"items={len(final_items)} reused={len(reused_items)} fetched_new={len(missing_ids)} "
+            f"removed={len([k for k in old_by_mlc.keys() if k not in current_mlc_set])} "
+            f"elapsed={round(now - started_at, 2)}s"
         )
 
-        return deduped_items
+        return final_items
 
     async def _scan_incomplete_compatibility_ids(
         self,
