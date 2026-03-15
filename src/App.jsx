@@ -461,8 +461,9 @@ function App() {
 <PublicationsWithoutCompatibilityModal
   open={showPublicationsModal}
   onClose={handleClosePublicationsModal}
-
+  apiBase={API_BASE}
 />
+
     </>
   );
 }

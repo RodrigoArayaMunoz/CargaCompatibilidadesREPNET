@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from config import settings
 from schemas import JobResponse
 from services import job_store
+from services.ml_publicationswithout_service import ml_publications_service
 from services.token_store import token_store, require_ml_env
 from services.job_store import JobStore
 from services.excel_service import save_upload_file, load_excel_rows
@@ -262,3 +263,44 @@ async def get_import_status(job_id: str):
         message=job.get("message", ""),
         progress=job.get("progress", 0),
     )
+
+@app.get("/publications/without-compatibilities")
+async def get_publications_without_compatibilities(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=20),
+    q: str = Query(""),
+    refresh: bool = Query(False),
+):
+    user_id = token_store.first_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
+
+    return await ml_publications_service.get_publications_without_compatibilities(
+        user_id=str(user_id),
+        page=page,
+        page_size=page_size,
+        q=q,
+        refresh=refresh,
+    )
+
+@app.post("/publications/without-compatibilities/refresh")
+async def refresh_publications_without_compatibilities():
+    user_id = token_store.first_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
+
+    return await ml_publications_service.start_background_refresh(
+        user_id=str(user_id)
+    )
+
+
+@app.get("/publications/without-compatibilities/refresh-status")
+async def get_publications_without_compatibilities_refresh_status():
+    user_id = token_store.first_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
+
+    return await ml_publications_service.get_refresh_status(
+        user_id=str(user_id)
+    )
+

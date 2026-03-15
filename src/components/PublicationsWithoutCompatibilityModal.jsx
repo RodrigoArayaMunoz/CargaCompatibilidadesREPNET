@@ -1,12 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import "./PublicationsWithoutCompatibilityModal.css";
 
 function PublicationsWithoutCompatibilityModal({ open, onClose, apiBase }) {
   const [items, setItems] = useState([]);
-  const [filteredText, setFilteredText] = useState("");
-  const [filterType, setFilterType] = useState("mlc");
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState("");
+
+  const pageSize = 20;
+
+  useEffect(() => {
+    if (!open) return;
+
+    setCurrentPage(1);
+    setSearchText("");
+    setDebouncedSearchText("");
+    setRefreshMessage("");
+  }, [open]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearchText(searchText.trim());
+      setCurrentPage(1);
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchText]);
 
   useEffect(() => {
     if (!open) return;
@@ -16,15 +45,24 @@ function PublicationsWithoutCompatibilityModal({ open, onClose, apiBase }) {
         setLoading(true);
         setError("");
 
+        const params = new URLSearchParams({
+          page: String(currentPage),
+          page_size: String(pageSize),
+        });
+
+        if (debouncedSearchText) {
+          params.append("q", debouncedSearchText);
+        }
+
         const res = await fetch(
-          `${apiBase}/publications/without-compatibilities`,
+          `${apiBase}/publications/without-compatibilities?${params.toString()}`,
           {
             method: "GET",
             credentials: "include",
           }
         );
 
-        const data = await res.json().catch(() => []);
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           throw new Error(
@@ -34,36 +72,110 @@ function PublicationsWithoutCompatibilityModal({ open, onClose, apiBase }) {
           );
         }
 
-        setItems(Array.isArray(data) ? data : []);
+        setItems(Array.isArray(data?.items) ? data.items : []);
+        setTotal(Number(data?.total || 0));
+        setTotalPages(Number(data?.total_pages || 0));
+        setHasNext(Boolean(data?.has_next));
+        setHasPrev(Boolean(data?.has_prev));
       } catch (err) {
         setError(
           err?.message ||
             "Ocurrió un error al obtener las publicaciones sin compatibilidades."
         );
+        setItems([]);
+        setTotal(0);
+        setTotalPages(0);
+        setHasNext(false);
+        setHasPrev(false);
       } finally {
         setLoading(false);
       }
     };
 
     fetchPublications();
-  }, [open, apiBase]);
+  }, [open, apiBase, currentPage, debouncedSearchText]);
 
-  const filteredItems = useMemo(() => {
-    const text = filteredText.trim().toLowerCase();
+  const handlePrevPage = () => {
+    if (!hasPrev || loading) return;
+    setCurrentPage((prev) => Math.max(1, prev - 1));
+  };
 
-    if (!text) return items;
+  const handleNextPage = () => {
+    if (!hasNext || loading) return;
+    setCurrentPage((prev) => prev + 1);
+  };
 
-    return items.filter((item) => {
-      const mlc = String(item?.mlc || "").toLowerCase();
-      const title = String(item?.title || "").toLowerCase();
+  const handleRefreshResults = async () => {
+    try {
+      setRefreshing(true);
+      setRefreshMessage("Actualizando índice...");
 
-      if (filterType === "mlc") {
-        return mlc.includes(text);
+      const res = await fetch(
+        `${apiBase}/publications/without-compatibilities/refresh`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.detail || data?.message || "No se pudo iniciar la actualización."
+        );
       }
 
-      return title.includes(text);
-    });
-  }, [items, filteredText, filterType]);
+      const pollStatus = async () => {
+        let done = false;
+
+        while (!done) {
+          const statusRes = await fetch(
+            `${apiBase}/publications/without-compatibilities/refresh-status`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          const statusData = await statusRes.json().catch(() => ({}));
+
+          if (!statusRes.ok) {
+            throw new Error(
+              statusData?.detail ||
+                statusData?.message ||
+                "No se pudo consultar el estado de actualización."
+            );
+          }
+
+          if (statusData?.in_progress) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            continue;
+          }
+
+          if (statusData?.error) {
+            throw new Error(statusData.error);
+          }
+
+          done = true;
+        }
+      };
+
+      await pollStatus();
+      setRefreshMessage("Índice actualizado correctamente.");
+      setCurrentPage(1);
+
+      setTimeout(() => {
+        setRefreshMessage("");
+      }, 2500);
+    } catch (err) {
+      setRefreshMessage(
+        err?.message || "Ocurrió un error al actualizar los resultados."
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (!open) return null;
 
@@ -80,27 +192,25 @@ function PublicationsWithoutCompatibilityModal({ open, onClose, apiBase }) {
           </button>
         </div>
 
-        <div className="publications-toolbar">
-          <select
-            className="publications-filter-type"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-          >
-            <option value="mlc">Buscar por MLC</option>
-            <option value="title">Buscar por título</option>
-          </select>
-
+        <div className="publications-toolbar single-search">
           <input
             type="text"
-            className="publications-search-input"
-            placeholder={
-              filterType === "mlc"
-                ? "Escribe un MLC..."
-                : "Escribe un título..."
-            }
-            value={filteredText}
-            onChange={(e) => setFilteredText(e.target.value)}
+            className="publications-search-input full-width"
+            placeholder="Buscar por MLC o título..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
           />
+        </div>
+
+        <div className="publications-actions">
+          <button
+            type="button"
+            className="refresh-results-button"
+            onClick={handleRefreshResults}
+            disabled={refreshing}
+          >
+            {refreshing ? "Actualizando..." : "Actualizar resultados"}
+          </button>
         </div>
 
         <div className="publications-body">
@@ -110,36 +220,70 @@ function PublicationsWithoutCompatibilityModal({ open, onClose, apiBase }) {
             <div className="publications-state error">{error}</div>
           ) : (
             <>
-              <div className="publications-count">
-                Total encontrados: {filteredItems.length}
+              <div className="publications-summary">
+                <div className="publications-count">
+                  Total encontrados: {total}
+                </div>
+
+                {refreshMessage && (
+                  <div className="publications-refresh-message">
+                    {refreshMessage}
+                  </div>
+                )}
               </div>
 
-              <div className="publications-table-wrapper">
-                <table className="publications-table">
-                  <thead>
-                    <tr>
-                      <th>MLC</th>
-                      <th>Título</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredItems.length === 0 ? (
+              <div className="publications-table-scroll">
+                <div className="publications-table-wrapper">
+                  <table className="publications-table">
+                    <thead>
                       <tr>
-                        <td colSpan="2" className="empty-row">
-                          No se encontraron publicaciones.
-                        </td>
+                        <th>MLC</th>
+                        <th>Título</th>
                       </tr>
-                    ) : (
-                      filteredItems.map((item, index) => (
-                        <tr key={`${item?.mlc || "item"}-${index}`}>
-                          <td>{item?.mlc || "-"}</td>
-                          <td>{item?.title || "-"}</td>
+                    </thead>
+                    <tbody>
+                      {items.length === 0 ? (
+                        <tr>
+                          <td colSpan="2" className="empty-row">
+                            No se encontraron publicaciones.
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        items.map((item) => (
+                          <tr key={item.mlc}>
+                            <td>{item?.mlc || "-"}</td>
+                            <td>{item?.title || "-"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
+              {totalPages > 0 && (
+                <div className="publications-pagination">
+                  <button
+                    type="button"
+                    onClick={handlePrevPage}
+                    disabled={!hasPrev || loading}
+                  >
+                    Anterior
+                  </button>
+
+                  <span>
+                    Página {currentPage} de {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleNextPage}
+                    disabled={!hasNext || loading}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
