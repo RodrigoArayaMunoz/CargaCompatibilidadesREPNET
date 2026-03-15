@@ -2,6 +2,8 @@ import Logo from "/logo.png";
 import "./App.css";
 import { useEffect, useState, useRef } from "react";
 import ResultModal from "./components/ResultModal";
+import PublicationsWithoutCompatibilityModal from "./components/PublicationsWithoutCompatibilityModal";
+
 
 function ProcessingOverlay({ visible, progress = 0, message = "" }) {
   if (!visible) return null;
@@ -48,6 +50,7 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [processMessage, setProcessMessage] = useState("");
   const [showResultModal, setShowResultModal] = useState(false);
+  const [showPublicationsModal, setShowPublicationsModal] = useState(false);
 
   const API_BASE =
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -356,8 +359,12 @@ function App() {
     : mlStatusMessage;
 
     const handleViewPublicationsWithoutCompatibilities = () => {
-  window.location.href = `${API_BASE}/publicaciones-sin-compatibilidades`;
-};
+      setShowPublicationsModal(true);
+    };
+
+    const handleClosePublicationsModal = () => {
+      setShowPublicationsModal(false);
+    };
 
   return (
     <>
@@ -449,6 +456,12 @@ function App() {
   onClose={handleCloseResultModal}
   summary={jobResult?.summary}
   results={jobResult?.results}
+/>
+
+<PublicationsWithoutCompatibilityModal
+  open={showPublicationsModal}
+  onClose={handleClosePublicationsModal}
+
 />
     </>
   );

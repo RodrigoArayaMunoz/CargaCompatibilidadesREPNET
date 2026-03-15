@@ -1,0 +1,147 @@
+.custom-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.custom-modal-container {
+  background: #ffffff;
+  width: min(1000px, 95vw);
+  max-height: 90vh;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.custom-modal-header h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.custom-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 32px;
+  cursor: pointer;
+  color: #475569;
+  line-height: 1;
+}
+
+.publications-modal {
+  min-height: 520px;
+}
+
+.publications-toolbar {
+  display: flex;
+  gap: 12px;
+  padding: 18px 24px 12px;
+  flex-wrap: wrap;
+}
+
+.publications-filter-type,
+.publications-search-input {
+  height: 46px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 15px;
+  outline: none;
+}
+
+.publications-filter-type {
+  min-width: 190px;
+  background: white;
+}
+
+.publications-search-input {
+  flex: 1;
+  min-width: 260px;
+}
+
+.publications-body {
+  padding: 0 24px 24px;
+  overflow: auto;
+}
+
+.publications-count {
+  margin: 8px 0 14px;
+  font-size: 14px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.publications-table-wrapper {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.publications-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.publications-table thead {
+  background: #f8fafc;
+}
+
+.publications-table th,
+.publications-table td {
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.publications-table th {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.publications-table td {
+  font-size: 14px;
+  color: #334155;
+  vertical-align: top;
+}
+
+.publications-table tbody tr:hover {
+  background: #f8fbff;
+}
+
+.empty-row {
+  text-align: center;
+  padding: 26px !important;
+  color: #64748b;
+}
+
+.publications-state {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.publications-state.error {
+  color: #dc2626;
+}
