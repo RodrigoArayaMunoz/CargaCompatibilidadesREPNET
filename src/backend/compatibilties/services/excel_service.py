@@ -1,5 +1,5 @@
-import math
 import os
+import re
 import shutil
 import unicodedata
 import uuid
@@ -13,24 +13,32 @@ from config import settings
 os.makedirs(settings.upload_dir, exist_ok=True)
 
 COLUMN_ALIASES = {
-    "ASOCIACION ML": ["ASOCIACION ML"],
-    "MARCA": ["MARCA", "Marca"],
-    "MODELO": ["MODELO", "Modelo"],
-    "CILINDRADA": ["CILINDRADA", "CILINDRADA ABREVIADA"],
-    "TRANSMISION": ["TRANSMISION", "Transmision", "Transmisión"],
-    "DESDE": ["DESDE", "Desde"],
-    "HASTA": ["HASTA", "Hasta"],
+    "ASOCIACION ML": ["ASOCIACION ML", "ASOCIACIÓN ML"],
+    "MARCA": ["MARCA"],
+    "MODELO": ["MODELO"],
+    "VERSION": ["VERSION", "VERSIÓN"],
+    "CILINDRADA": ["CILINDRADA"],
+    "TRANSMISION": ["TRANSMISION", "TRANSMISIÓN"],
+    "AÑO": ["AÑO", "ANO"],
 }
 
 COMPAT_REQUIRED_LOGICAL_COLUMNS = [
     "ASOCIACION ML",
     "MARCA",
     "MODELO",
+    "VERSION",
     "CILINDRADA",
     "TRANSMISION",
-    "DESDE",
-    "HASTA",
+    "AÑO",
 ]
+
+
+def get_row_value(row: dict, column_name: str) -> Any:
+    aliases = COLUMN_ALIASES.get(column_name, [column_name])
+    for alias in aliases:
+        if alias in row and row[alias] is not None:
+            return row[alias]
+    return ""
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -71,7 +79,7 @@ def _pick_existing_columns(df: pd.DataFrame) -> dict[str, str]:
     }
     donde la clave es la columna lógica y el valor es el nombre real encontrado.
     """
-    found = {}
+    found: dict[str, str] = {}
     cols = set(str(c).strip() for c in df.columns)
 
     for logical_col in COMPAT_REQUIRED_LOGICAL_COLUMNS:
@@ -115,11 +123,14 @@ def load_excel_rows(file_path: str, sheet_name: str = "Hoja1") -> list[dict]:
             try:
                 df = pd.read_excel(file_path, sheet_name=sheet_name, engine="openpyxl")
             except ValueError:
-                # Si la hoja "Hoja1" no existe, intenta con la primera hoja
                 excel_file = pd.ExcelFile(file_path, engine="openpyxl")
                 if not excel_file.sheet_names:
                     raise ValueError("El archivo Excel no contiene hojas")
-                df = pd.read_excel(file_path, sheet_name=excel_file.sheet_names[0], engine="openpyxl")
+                df = pd.read_excel(
+                    file_path,
+                    sheet_name=excel_file.sheet_names[0],
+                    engine="openpyxl",
+                )
         else:
             raise ValueError("Formato no soportado. Solo se aceptan .xlsx, .xls o .csv")
     except Exception as e:
@@ -142,50 +153,15 @@ def load_excel_rows(file_path: str, sheet_name: str = "Hoja1") -> list[dict]:
 def normalize_text(value: Any) -> str:
     if value is None:
         return ""
-
-    if isinstance(value, float) and math.isnan(value):
-        return ""
-
-    text = str(value).strip()
-    if text.lower() == "nan":
-        return ""
-
-    return text
+    return str(value).strip()
 
 
 def normalize_for_compare(value: Any) -> str:
     text = normalize_text(value).lower()
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = text.replace("-", " ").replace("_", " ")
-    text = " ".join(text.split())
+    text = re.sub(r"\s+", " ", text).strip()
     return text
-
-
-def normalize_year(value: Any) -> int | None:
-    if value is None:
-        return None
-
-    try:
-        if isinstance(value, float) and math.isnan(value):
-            return None
-        year = int(float(value))
-        return year if year > 0 else None
-    except Exception:
-        return None
-
-
-def build_years_list(desde: Any, hasta: Any) -> list[int]:
-    year_from = normalize_year(desde)
-    year_to = normalize_year(hasta)
-
-    if not year_from:
-        return []
-
-    if not year_to or year_to == 0 or year_to < year_from:
-        return [year_from]
-
-    return list(range(year_from, year_to + 1))
 
 
 def normalize_engine(value: Any) -> str:
@@ -208,9 +184,29 @@ def normalize_transmission(value: Any) -> str:
     return mapping.get(text, normalize_text(value))
 
 
-def extract_item_id(value: Any) -> str:
-    return normalize_text(value).upper()
+def extract_item_id(value: Any) -> str | None:
+    text = normalize_text(value)
+    if not text:
+        return None
+
+    match = re.search(r"(ML[AMCBU]\d+)", text, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+
+    return text.upper() if text else None
 
 
-def get_row_value(row: dict, logical_name: str) -> Any:
-    return row.get(logical_name)
+def parse_year_value(value: Any) -> int | None:
+    text = normalize_text(value)
+    if not text:
+        return None
+
+    try:
+        year = int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+    if year < 1900 or year > 2100:
+        return None
+
+    return year

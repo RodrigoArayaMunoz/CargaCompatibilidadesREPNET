@@ -7,28 +7,27 @@ from typing import Any, Awaitable, Callable
 from fastapi import HTTPException
 
 from config import settings
+from services.catalog_preload_service import CatalogPreloadService
 from services.excel_service import (
-    build_years_list,
     extract_item_id,
     get_row_value,
     normalize_engine,
     normalize_for_compare,
     normalize_text,
     normalize_transmission,
+    parse_year_value,
 )
 from services.job_store import JobStore
-from services.ml_client import ml_client, pick_value_id_by_name
+from services.ml_client import ml_client
 
 
 @dataclass
 class JobCaches:
     item_detail: dict[str, dict] = field(default_factory=dict)
-    brand: dict[str, str | None] = field(default_factory=dict)
-    model: dict[tuple[str, str], str | None] = field(default_factory=dict)
-    year: dict[tuple[str, str, int], str | None] = field(default_factory=dict)
-    engine: dict[tuple[str, str, str, str], str | None] = field(default_factory=dict)
-    transmission: dict[tuple[str, str, str, str], str | None] = field(default_factory=dict)
-    product: dict[tuple[str, str, str, str | None, str | None], str | None] = field(default_factory=dict)
+    product: dict[
+        tuple[str | None, str | None, str | None, str | None, str | None, str | None],
+        str | None
+    ] = field(default_factory=dict)
 
 
 @dataclass
@@ -56,11 +55,6 @@ class JobMetrics:
 
 
 class SimpleRateLimiter:
-    """
-    Limitador simple por worker.
-    Controla la separación mínima entre requests para no disparar ráfagas.
-    """
-
     def __init__(self, requests_per_second: float):
         self.requests_per_second = max(requests_per_second, 0.1)
         self.min_interval = 1.0 / self.requests_per_second
@@ -100,12 +94,6 @@ async def call_ml(
     metrics: JobMetrics,
     **kwargs,
 ) -> Any:
-    """
-    Wrapper central para llamadas a Mercado Libre:
-    - rate limiting
-    - retry con backoff
-    - conteo de métricas
-    """
     last_exc: Exception | None = None
 
     for attempt in range(RETRY_ATTEMPTS):
@@ -152,157 +140,18 @@ def _cache_get(cache: dict, key: Any, metrics: JobMetrics) -> Any:
     return None
 
 
-async def resolve_brand_id(
-    access_token: str,
-    brand_name: str,
-    caches: JobCaches,
-    metrics: JobMetrics,
-) -> str | None:
-    key = normalize_for_compare(brand_name)
-    cached = _cache_get(caches.brand, key, metrics)
-    if key in caches.brand:
-        return cached
-
-    values = await call_ml(
-        ml_client.get_top_values,
-        access_token,
-        "BRAND",
-        metrics=metrics,
-    )
-    value = pick_value_id_by_name(values, brand_name)
-    caches.brand[key] = value
-    return value
-
-
-async def resolve_model_id(
-    access_token: str,
-    brand_id: str,
-    model_name: str,
-    caches: JobCaches,
-    metrics: JobMetrics,
-) -> str | None:
-    key = (brand_id, normalize_for_compare(model_name))
-    cached = _cache_get(caches.model, key, metrics)
-    if key in caches.model:
-        return cached
-
-    values = await call_ml(
-        ml_client.get_top_values,
-        access_token,
-        "CAR_AND_VAN_MODEL",
-        known_attributes=[{"id": "BRAND", "value_id": brand_id}],
-        metrics=metrics,
-    )
-    value = pick_value_id_by_name(values, model_name)
-    caches.model[key] = value
-    return value
-
-
-async def resolve_year_id(
-    access_token: str,
-    brand_id: str,
-    model_id: str,
-    year: int,
-    caches: JobCaches,
-    metrics: JobMetrics,
-) -> str | None:
-    key = (brand_id, model_id, year)
-    cached = _cache_get(caches.year, key, metrics)
-    if key in caches.year:
-        return cached
-
-    values = await call_ml(
-        ml_client.get_top_values,
-        access_token,
-        "YEAR",
-        known_attributes=[
-            {"id": "BRAND", "value_id": brand_id},
-            {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
-        ],
-        metrics=metrics,
-    )
-    value = pick_value_id_by_name(values, str(year))
-    caches.year[key] = value
-    return value
-
-
-async def resolve_engine_id(
-    access_token: str,
-    brand_id: str,
-    model_id: str,
-    year_id: str,
-    engine_name: str,
-    caches: JobCaches,
-    metrics: JobMetrics,
-) -> str | None:
-    if not engine_name:
-        return None
-
-    key = (brand_id, model_id, year_id, normalize_for_compare(engine_name))
-    cached = _cache_get(caches.engine, key, metrics)
-    if key in caches.engine:
-        return cached
-
-    values = await call_ml(
-        ml_client.get_top_values,
-        access_token,
-        "CAR_AND_VAN_ENGINE",
-        known_attributes=[
-            {"id": "BRAND", "value_id": brand_id},
-            {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
-            {"id": "YEAR", "value_id": year_id},
-        ],
-        metrics=metrics,
-    )
-    value = pick_value_id_by_name(values, engine_name)
-    caches.engine[key] = value
-    return value
-
-
-async def resolve_transmission_id(
-    access_token: str,
-    brand_id: str,
-    model_id: str,
-    year_id: str,
-    transmission_name: str,
-    caches: JobCaches,
-    metrics: JobMetrics,
-) -> str | None:
-    if not transmission_name:
-        return None
-
-    key = (brand_id, model_id, year_id, normalize_for_compare(transmission_name))
-    cached = _cache_get(caches.transmission, key, metrics)
-    if key in caches.transmission:
-        return cached
-
-    values = await call_ml(
-        ml_client.get_top_values,
-        access_token,
-        "TRANSMISSION_CONTROL_TYPE",
-        known_attributes=[
-            {"id": "BRAND", "value_id": brand_id},
-            {"id": "CAR_AND_VAN_MODEL", "value_id": model_id},
-            {"id": "YEAR", "value_id": year_id},
-        ],
-        metrics=metrics,
-    )
-    value = pick_value_id_by_name(values, transmission_name)
-    caches.transmission[key] = value
-    return value
-
-
 async def search_vehicle_product_id(
     access_token: str,
-    brand_id: str,
-    model_id: str,
-    year_id: str,
+    brand_id: str | None,
+    model_id: str | None,
+    year_id: str | None,
+    version_id: str | None,
     transmission_id: str | None,
     engine_id: str | None,
     caches: JobCaches,
     metrics: JobMetrics,
 ) -> str | None:
-    key = (brand_id, model_id, year_id, transmission_id, engine_id)
+    key = (brand_id, model_id, year_id, version_id, transmission_id, engine_id)
     cached = _cache_get(caches.product, key, metrics)
     if key in caches.product:
         return cached
@@ -313,10 +162,12 @@ async def search_vehicle_product_id(
         brand_id=brand_id,
         model_id=model_id,
         year_id=year_id,
+        version_id=version_id,
         transmission_id=transmission_id,
         engine_id=engine_id,
         metrics=metrics,
     )
+
     value = str(results[0]["id"]) if results and results[0].get("id") else None
     caches.product[key] = value
     return value
@@ -346,10 +197,20 @@ def dedup_key(row: dict) -> tuple:
     item_id = extract_item_id(get_row_value(row, "ASOCIACION ML"))
     brand_name = normalize_for_compare(get_row_value(row, "MARCA"))
     model_name = normalize_for_compare(get_row_value(row, "MODELO"))
+    version_name = normalize_for_compare(get_row_value(row, "VERSION"))
     engine_name = normalize_for_compare(get_row_value(row, "CILINDRADA"))
     transmission_name = normalize_for_compare(get_row_value(row, "TRANSMISION"))
-    years = tuple(build_years_list(get_row_value(row, "DESDE"), get_row_value(row, "HASTA")))
-    return (item_id, brand_name, model_name, engine_name, transmission_name, years)
+    year = parse_year_value(get_row_value(row, "AÑO"))
+
+    return (
+        item_id,
+        brand_name,
+        model_name,
+        version_name,
+        engine_name,
+        transmission_name,
+        year,
+    )
 
 
 def _build_error_result(
@@ -358,42 +219,46 @@ def _build_error_result(
     *,
     brand_name: str = "",
     model_name: str = "",
+    version_name: str = "",
     engine_name: str = "",
     transmission_name: str = "",
-    years: list[int] | None = None,
+    year: int | None = None,
     error_type: str = "functional",
     error_code: str = "VALIDATION_ERROR",
+    results: list[dict] | None = None,
 ) -> dict:
     return {
         "ok": False,
         "item_id": item_id,
         "brand_name": brand_name,
         "model_name": model_name,
+        "version_name": version_name,
         "engine_name": engine_name,
         "transmission_name": transmission_name,
-        "years_requested": years or [],
-        "years_processed": 0,
+        "year_requested": year,
         "success_count": 0,
         "error_count": 1,
         "error_type": error_type,
         "error_code": error_code,
         "reason": reason,
-        "results": [],
+        "results": results or [],
     }
 
 
 async def process_vehicle_row(
     access_token: str,
     row: dict,
+    catalog_cache: CatalogPreloadService,
     caches: JobCaches,
     metrics: JobMetrics,
 ) -> dict:
     item_id = extract_item_id(get_row_value(row, "ASOCIACION ML"))
     brand_name = normalize_text(get_row_value(row, "MARCA"))
     model_name = normalize_text(get_row_value(row, "MODELO"))
+    version_name = normalize_text(get_row_value(row, "VERSION"))
     engine_name = normalize_engine(get_row_value(row, "CILINDRADA"))
     transmission_name = normalize_transmission(get_row_value(row, "TRANSMISION"))
-    years = build_years_list(get_row_value(row, "DESDE"), get_row_value(row, "HASTA"))
+    year = parse_year_value(get_row_value(row, "AÑO"))
 
     if not item_id:
         return _build_error_result(
@@ -401,21 +266,23 @@ async def process_vehicle_row(
             "Fila sin ASOCIACION ML",
             brand_name=brand_name,
             model_name=model_name,
+            version_name=version_name,
             engine_name=engine_name,
             transmission_name=transmission_name,
-            years=years,
+            year=year,
             error_code="MISSING_ITEM_ID",
         )
 
-    if not brand_name or not model_name or not years:
+    if not brand_name or not model_name or year is None:
         return _build_error_result(
             item_id,
-            "Faltan datos mínimos: MARCA / MODELO / DESDE",
+            "Faltan datos mínimos: MARCA / MODELO / AÑO",
             brand_name=brand_name,
             model_name=model_name,
+            version_name=version_name,
             engine_name=engine_name,
             transmission_name=transmission_name,
-            years=years,
+            year=year,
             error_code="MISSING_MINIMUM_DATA",
         )
 
@@ -430,9 +297,10 @@ async def process_vehicle_row(
                 "El item no devolvió category_id",
                 brand_name=brand_name,
                 model_name=model_name,
+                version_name=version_name,
                 engine_name=engine_name,
                 transmission_name=transmission_name,
-                years=years,
+                year=year,
                 error_code="MISSING_CATEGORY_ID",
             )
 
@@ -442,156 +310,168 @@ async def process_vehicle_row(
                 "El item no devolvió user_product_id",
                 brand_name=brand_name,
                 model_name=model_name,
+                version_name=version_name,
                 engine_name=engine_name,
                 transmission_name=transmission_name,
-                years=years,
+                year=year,
                 error_code="MISSING_USER_PRODUCT_ID",
             )
 
-        brand_id = await resolve_brand_id(access_token, brand_name, caches, metrics)
+        brand_id = catalog_cache.resolve_brand_id(brand_name)
         if not brand_id:
             return _build_error_result(
                 item_id,
                 f"No se encontró BRAND para '{brand_name}'",
                 brand_name=brand_name,
                 model_name=model_name,
+                version_name=version_name,
                 engine_name=engine_name,
                 transmission_name=transmission_name,
-                years=years,
+                year=year,
                 error_code="BRAND_NOT_FOUND",
             )
 
-        model_id = await resolve_model_id(access_token, brand_id, model_name, caches, metrics)
+        model_id = catalog_cache.resolve_model_id(model_name)
         if not model_id:
             return _build_error_result(
                 item_id,
                 f"No se encontró MODEL para '{model_name}'",
                 brand_name=brand_name,
                 model_name=model_name,
+                version_name=version_name,
                 engine_name=engine_name,
                 transmission_name=transmission_name,
-                years=years,
+                year=year,
                 error_code="MODEL_NOT_FOUND",
             )
 
-        results: list[dict] = []
+        year_id = catalog_cache.resolve_year_id(year)
+        if not year_id:
+            return _build_error_result(
+                item_id,
+                f"No se encontró YEAR para '{year}'",
+                brand_name=brand_name,
+                model_name=model_name,
+                version_name=version_name,
+                engine_name=engine_name,
+                transmission_name=transmission_name,
+                year=year,
+                error_code="YEAR_NOT_FOUND",
+            )
 
-        for year in years:
-            try:
-                year_id = await resolve_year_id(access_token, brand_id, model_id, year, caches, metrics)
-                if not year_id:
-                    results.append({
+        version_id = catalog_cache.resolve_version_id(version_name) if version_name else None
+        if version_name and not version_id:
+            return _build_error_result(
+                item_id,
+                f"No se encontró VERSION para '{version_name}'",
+                brand_name=brand_name,
+                model_name=model_name,
+                version_name=version_name,
+                engine_name=engine_name,
+                transmission_name=transmission_name,
+                year=year,
+                error_code="VERSION_NOT_FOUND",
+            )
+
+        engine_id = catalog_cache.resolve_engine_id(engine_name) if engine_name else None
+        if engine_name and not engine_id:
+            return _build_error_result(
+                item_id,
+                f"No se encontró ENGINE para '{engine_name}'",
+                brand_name=brand_name,
+                model_name=model_name,
+                version_name=version_name,
+                engine_name=engine_name,
+                transmission_name=transmission_name,
+                year=year,
+                error_code="ENGINE_NOT_FOUND",
+            )
+
+        transmission_id = (
+            catalog_cache.resolve_transmission_id(transmission_name)
+            if transmission_name
+            else None
+        )
+        if transmission_name and not transmission_id:
+            return _build_error_result(
+                item_id,
+                f"No se encontró TRANSMISSION para '{transmission_name}'",
+                brand_name=brand_name,
+                model_name=model_name,
+                version_name=version_name,
+                engine_name=engine_name,
+                transmission_name=transmission_name,
+                year=year,
+                error_code="TRANSMISSION_NOT_FOUND",
+            )
+
+        product_id = await search_vehicle_product_id(
+            access_token,
+            brand_id,
+            model_id,
+            year_id,
+            version_id,
+            transmission_id,
+            engine_id,
+            caches,
+            metrics,
+        )
+
+        if not product_id:
+            return _build_error_result(
+                item_id,
+                "No se encontró product_id con los ids resueltos",
+                brand_name=brand_name,
+                model_name=model_name,
+                version_name=version_name,
+                engine_name=engine_name,
+                transmission_name=transmission_name,
+                year=year,
+                error_type="functional",
+                error_code="PRODUCT_NOT_FOUND",
+                results=[
+                    {
                         "ok": False,
                         "year": year,
-                        "reason": f"No se encontró YEAR para '{year}'",
-                        "error_type": "functional",
-                        "error_code": "YEAR_NOT_FOUND",
-                    })
-                    continue
-
-                engine_id = await resolve_engine_id(
-                    access_token, brand_id, model_id, year_id, engine_name, caches, metrics
-                )
-                if engine_name and not engine_id:
-                    results.append({
-                        "ok": False,
-                        "year": year,
-                        "reason": f"No se encontró ENGINE para '{engine_name}'",
-                        "error_type": "functional",
-                        "error_code": "ENGINE_NOT_FOUND",
-                    })
-                    continue
-
-                transmission_id = await resolve_transmission_id(
-                    access_token,
-                    brand_id,
-                    model_id,
-                    year_id,
-                    transmission_name,
-                    caches,
-                    metrics,
-                )
-                if transmission_name and not transmission_id:
-                    results.append({
-                        "ok": False,
-                        "year": year,
-                        "reason": f"No se encontró TRANSMISSION para '{transmission_name}'",
-                        "error_type": "functional",
-                        "error_code": "TRANSMISSION_NOT_FOUND",
-                    })
-                    continue
-
-                product_id = await search_vehicle_product_id(
-                    access_token,
-                    brand_id,
-                    model_id,
-                    year_id,
-                    transmission_id,
-                    engine_id,
-                    caches,
-                    metrics,
-                )
-                if not product_id:
-                    results.append({
-                        "ok": False,
-                        "year": year,
-                        "reason": "No se encontró product_id",
+                        "reason": "No se encontró product_id con los ids resueltos",
                         "error_type": "functional",
                         "error_code": "PRODUCT_NOT_FOUND",
-                    })
-                    continue
+                    }
+                ],
+            )
 
-                ml_response = await call_ml(
-                    ml_client.add_user_product_compatibility,
-                    access_token=access_token,
-                    user_product_id=str(user_product_id),
-                    category_id=str(category_id),
-                    product_id=product_id,
-                    creation_source="DEFAULT",
-                    metrics=metrics,
-                )
-
-                results.append({
-                    "ok": True,
-                    "year": year,
-                    "product_id": product_id,
-                    "ml_response": ml_response,
-                })
-
-            except HTTPException as exc:
-                results.append({
-                    "ok": False,
-                    "year": year,
-                    "reason": f"HTTPException: {exc.detail}",
-                    "error_type": "technical" if _is_retryable_http_exception(exc) else "functional",
-                    "error_code": f"HTTP_{getattr(exc, 'status_code', 'ERROR')}",
-                })
-            except Exception as exc:
-                results.append({
-                    "ok": False,
-                    "year": year,
-                    "reason": f"Exception: {str(exc)}",
-                    "error_type": "technical",
-                    "error_code": "UNEXPECTED_EXCEPTION",
-                })
-
-        success_results = [r for r in results if r.get("ok")]
-        error_results = [r for r in results if not r.get("ok")]
+        ml_response = await call_ml(
+            ml_client.add_user_product_compatibility,
+            access_token=access_token,
+            user_product_id=str(user_product_id),
+            category_id=str(category_id),
+            product_id=product_id,
+            creation_source="DEFAULT",
+            metrics=metrics,
+        )
 
         return {
-            "ok": len(success_results) > 0,
+            "ok": True,
             "item_id": item_id,
             "brand_name": brand_name,
             "model_name": model_name,
+            "version_name": version_name,
             "engine_name": engine_name,
             "transmission_name": transmission_name,
             "user_product_id": user_product_id,
             "category_id": category_id,
-            "years_requested": years,
-            "years_processed": len(results),
-            "success_count": len(success_results),
-            "error_count": len(error_results),
-            "results": results,
+            "year_requested": year,
+            "year_processed": year,
+            "success_count": 1,
+            "error_count": 0,
+            "results": [
+                {
+                    "ok": True,
+                    "year": year,
+                    "product_id": product_id,
+                    "ml_response": ml_response,
+                }
+            ],
         }
 
     except HTTPException as exc:
@@ -600,9 +480,10 @@ async def process_vehicle_row(
             f"HTTPException: {exc.detail}",
             brand_name=brand_name,
             model_name=model_name,
+            version_name=version_name,
             engine_name=engine_name,
             transmission_name=transmission_name,
-            years=years,
+            year=year,
             error_type="technical" if _is_retryable_http_exception(exc) else "functional",
             error_code=f"HTTP_{getattr(exc, 'status_code', 'ERROR')}",
         )
@@ -612,9 +493,10 @@ async def process_vehicle_row(
             f"Exception: {str(exc)}",
             brand_name=brand_name,
             model_name=model_name,
+            version_name=version_name,
             engine_name=engine_name,
             transmission_name=transmission_name,
-            years=years,
+            year=year,
             error_type="technical",
             error_code="ROW_PROCESSING_EXCEPTION",
         )
@@ -627,6 +509,25 @@ async def process_rows_for_job(
 ) -> dict:
     caches = JobCaches()
     metrics = JobMetrics()
+    catalog_cache = CatalogPreloadService(call_ml=call_ml, metrics=metrics)
+
+    JobStore.update(
+        job_id,
+        progress=3,
+        message="Precargando diccionarios globales desde Mercado Libre...",
+    )
+
+    catalog_data = await catalog_cache.preload_all(access_token)
+
+    JobStore.update(
+        job_id,
+        progress=10,
+        message="Diccionarios precargados. Iniciando procesamiento...",
+        metrics={
+            **metrics.to_dict(),
+            "catalog_preload": catalog_data.stats() if hasattr(catalog_data, "stats") else {},
+        },
+    )
 
     semaphore = asyncio.Semaphore(int(_settings_value("max_row_concurrency", 3)))
     progress_lock = asyncio.Lock()
@@ -660,6 +561,8 @@ async def process_rows_for_job(
                 "duplicated_rows": 0,
                 "success_count": 0,
                 "error_count": 0,
+                "functional_errors": 0,
+                "technical_errors": 0,
                 "compatibilities_total": 0,
                 "compatibilities_ok": 0,
                 "compatibilities_error": 0,
@@ -674,12 +577,17 @@ async def process_rows_for_job(
         nonlocal completed
 
         async with semaphore:
-            result = await process_vehicle_row(access_token, row, caches, metrics)
+            result = await process_vehicle_row(
+                access_token,
+                row,
+                catalog_cache,
+                caches,
+                metrics,
+            )
             row_results_unique[pos] = result
 
             async with progress_lock:
                 completed += 1
-
                 if completed % PROGRESS_UPDATE_EVERY == 0 or completed == total_unique_rows:
                     progress = 10 + int((completed / total_unique_rows) * 85)
                     JobStore.update(
@@ -727,7 +635,6 @@ async def process_rows_for_job(
     compat_total = 0
     compat_ok = 0
     compat_error = 0
-
     functional_errors = 0
     technical_errors = 0
 

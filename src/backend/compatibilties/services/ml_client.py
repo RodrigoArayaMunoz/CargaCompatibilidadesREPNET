@@ -82,12 +82,18 @@ class MercadoLibreClient:
                             detail=f"ML API error {response.status_code}: {response.text}",
                         )
 
-                    delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
+                    delay = min(
+                        settings.ml_retry_base_delay * (2 ** (attempt - 1)),
+                        8,
+                    ) + random.uniform(0, 0.3)
                     await asyncio.sleep(delay)
                     continue
 
                 if response.status_code == 401:
-                    raise HTTPException(status_code=401, detail="Token inválido o expirado")
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Token inválido o expirado",
+                    )
 
                 if response.status_code >= 400:
                     raise HTTPException(
@@ -104,13 +110,21 @@ class MercadoLibreClient:
 
                 return {"raw_response": response.text}
 
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.PoolTimeout,
+            ) as exc:
                 last_error = exc
 
                 if attempt == settings.ml_retry_attempts:
                     break
 
-                delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
+                delay = min(
+                    settings.ml_retry_base_delay * (2 ** (attempt - 1)),
+                    8,
+                ) + random.uniform(0, 0.3)
                 await asyncio.sleep(delay)
 
             except httpx.HTTPError as exc:
@@ -119,10 +133,16 @@ class MercadoLibreClient:
                 if attempt == settings.ml_retry_attempts:
                     break
 
-                delay = min(settings.ml_retry_base_delay * (2 ** (attempt - 1)), 8) + random.uniform(0, 0.3)
+                delay = min(
+                    settings.ml_retry_base_delay * (2 ** (attempt - 1)),
+                    8,
+                ) + random.uniform(0, 0.3)
                 await asyncio.sleep(delay)
 
-        raise HTTPException(status_code=502, detail=f"Error de red contra Mercado Libre: {last_error}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error de red contra Mercado Libre: {last_error}",
+        )
 
     async def validate_token(self, access_token: str) -> bool:
         if not self.client or not access_token:
@@ -141,12 +161,18 @@ class MercadoLibreClient:
 
         token_data = token_store.get(user_id)
         if not token_data:
-            raise HTTPException(status_code=404, detail="No hay token guardado para ese user_id")
+            raise HTTPException(
+                status_code=404,
+                detail="No hay token guardado para ese user_id",
+            )
 
         refresh_token = token_data.get("refresh_token")
         if not refresh_token:
             token_store.remove(user_id)
-            raise HTTPException(status_code=400, detail="No hay refresh_token guardado")
+            raise HTTPException(
+                status_code=400,
+                detail="No hay refresh_token guardado",
+            )
 
         if not self.client:
             raise RuntimeError("MercadoLibreClient no inicializado")
@@ -185,14 +211,20 @@ class MercadoLibreClient:
             access_token = token_data.get("access_token")
 
         if not access_token:
-            raise HTTPException(status_code=401, detail="No se pudo obtener access_token válido")
+            raise HTTPException(
+                status_code=401,
+                detail="No se pudo obtener access_token válido",
+            )
 
         return access_token
 
     async def get_item_detail(self, access_token: str, item_id: str) -> dict:
         data = await self.request("GET", f"/items/{item_id}", access_token)
         if not isinstance(data, dict):
-            raise HTTPException(status_code=500, detail=f"Respuesta inválida para item {item_id}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Respuesta inválida para item {item_id}",
+            )
         return data
 
     async def get_top_values(
@@ -200,55 +232,80 @@ class MercadoLibreClient:
         access_token: str,
         attribute_id: str,
         known_attributes: list[dict] | None = None,
-        limit: int = 200,
     ) -> list[dict]:
-        body = {"limit": limit}
+        payload: dict[str, Any] = {}
         if known_attributes:
-            body["known_attributes"] = known_attributes
+            payload["known_attributes"] = known_attributes
 
-        data = await self.request(
+        response = await self.request(
             "POST",
-            f"/catalog_domains/{settings.ml_domain_id}/attributes/{attribute_id}/top_values",
+            f"/catalog_domains/MLC-CARS_AND_VANS_FOR_COMPATIBILITIES/attributes/{attribute_id}/top_values",
             access_token,
-            json_body=body,
+            json_body=payload,
         )
-        return extract_values_list(data)
+
+        if isinstance(response, list):
+            return [x for x in response if isinstance(x, dict)]
+
+        if isinstance(response, dict):
+            top_values = response.get("top_values")
+            if isinstance(top_values, list):
+                return [x for x in top_values if isinstance(x, dict)]
+
+            results = response.get("results")
+            if isinstance(results, list):
+                return [x for x in results if isinstance(x, dict)]
+
+            values = response.get("values")
+            if isinstance(values, list):
+                return [x for x in values if isinstance(x, dict)]
+
+        return []
 
     async def search_vehicle_products(
         self,
         access_token: str,
-        brand_id: str,
-        model_id: str,
-        year_id: str,
+        brand_id: str | None = None,
+        model_id: str | None = None,
+        year_id: str | None = None,
+        version_id: str | None = None,
         transmission_id: str | None = None,
         engine_id: str | None = None,
     ) -> list[dict]:
-        known_attributes = [
-            {"id": "BRAND", "value_ids": [brand_id]},
-            {"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]},
-            {"id": "YEAR", "value_ids": [year_id]},
-        ]
+        known_attributes: list[dict[str, str]] = []
 
+        if brand_id:
+            known_attributes.append({"id": "BRAND", "value_id": brand_id})
+        if model_id:
+            known_attributes.append({"id": "CAR_AND_VAN_MODEL", "value_id": model_id})
+        if year_id:
+            known_attributes.append({"id": "YEAR", "value_id": year_id})
+        if version_id:
+            known_attributes.append({"id": "CAR_AND_VAN_SUBMODEL", "value_id": version_id})
         if engine_id:
-            known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_ids": [engine_id]})
-
+            known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_id": engine_id})
         if transmission_id:
-            known_attributes.append({"id": "TRANSMISSION_CONTROL_TYPE", "value_ids": [transmission_id]})
+            known_attributes.append(
+                {"id": "TRANSMISSION_CONTROL_TYPE", "value_id": transmission_id}
+            )
 
-        body = {
-            "domain_id": settings.ml_domain_id,
-            "site_id": settings.ml_site_id,
-            "known_attributes": known_attributes,
-            "limit": 10,
-        }
-
-        data = await self.request(
+        response = await self.request(
             "POST",
             "/catalog_compatibilities/products_search/chunks",
             access_token,
-            json_body=body,
+            json_body={
+                "domain_id": "MLC-CARS_AND_VANS_FOR_COMPATIBILITIES",
+                "site_id": "MLC",
+                "known_attributes": known_attributes,
+            },
         )
-        return extract_values_list(data)
+
+        if isinstance(response, dict):
+            results = response.get("results")
+            if isinstance(results, list):
+                return [x for x in results if isinstance(x, dict)]
+
+        return []
 
     async def add_user_product_compatibility(
         self,
@@ -261,7 +318,12 @@ class MercadoLibreClient:
         body = {
             "domain_id": settings.ml_domain_id,
             "category_id": category_id,
-            "products": [{"id": product_id, "creation_source": creation_source}],
+            "products": [
+                {
+                    "id": product_id,
+                    "creation_source": creation_source,
+                }
+            ],
         }
 
         data = await self.request(
@@ -285,6 +347,10 @@ def extract_values_list(data: Any) -> list[dict]:
         results = data.get("results")
         if isinstance(results, list):
             return [x for x in results if isinstance(x, dict)]
+
+        top_values = data.get("top_values")
+        if isinstance(top_values, list):
+            return [x for x in top_values if isinstance(x, dict)]
 
     return []
 
