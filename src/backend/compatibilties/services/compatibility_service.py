@@ -73,6 +73,25 @@ class SimpleRateLimiter:
 def _settings_value(name: str, default: Any) -> Any:
     return getattr(settings, name, default)
 
+DEBUG_COMPAT = True
+
+
+def dlog(*parts):
+    if DEBUG_COMPAT:
+        print(*parts, flush=True)
+
+
+def dsep(title: str = ""):
+    if DEBUG_COMPAT:
+        line = "=" * 25
+        print(f"\n{line} {title} {line}", flush=True)
+
+
+def safe_str(value):
+    if value is None:
+        return "None"
+    return str(value)
+
 
 RATE_LIMITER = SimpleRateLimiter(
     requests_per_second=float(_settings_value("ml_requests_per_second", 3))
@@ -245,6 +264,8 @@ def _build_error_result(
     }
 
 
+
+
 async def process_vehicle_row(
     access_token: str,
     row: dict,
@@ -252,6 +273,7 @@ async def process_vehicle_row(
     caches: JobCaches,
     metrics: JobMetrics,
 ) -> dict:
+    
     item_id = extract_item_id(get_row_value(row, "ASOCIACION ML"))
     brand_name = normalize_text(get_row_value(row, "MARCA"))
     model_name = normalize_text(get_row_value(row, "MODELO"))
@@ -259,6 +281,8 @@ async def process_vehicle_row(
     engine_name = normalize_engine(get_row_value(row, "CILINDRADA"))
     transmission_name = normalize_transmission(get_row_value(row, "TRANSMISION"))
     year = parse_year_value(get_row_value(row, "AÑO"))
+
+
 
     if not item_id:
         return _build_error_result(
@@ -316,6 +340,13 @@ async def process_vehicle_row(
                 year=year,
                 error_code="MISSING_USER_PRODUCT_ID",
             )
+        
+        dsep("ITEM DETAIL")
+        dlog("item_id         :", item_id)
+        dlog("category_id     :", category_id)
+        dlog("user_product_id :", user_product_id)
+        dlog("title           :", item_detail.get("title"))
+        dlog("domain_id       :", item_detail.get("domain_id"))
 
         brand_id = catalog_cache.resolve_brand_id(brand_name)
         if not brand_id:
@@ -404,6 +435,7 @@ async def process_vehicle_row(
                 year=year,
                 error_code="TRANSMISSION_NOT_FOUND",
             )
+        
 
         product_id = await search_vehicle_product_id(
             access_token,
@@ -440,6 +472,12 @@ async def process_vehicle_row(
                 ],
             )
 
+        dsep("CREATE COMPATIBILITY")
+        dlog("user_product_id :", str(user_product_id))
+        dlog("category_id     :", str(category_id))
+        dlog("product_id      :", product_id)
+        dlog("creation_source :", "DEFAULT")
+
         ml_response = await call_ml(
             ml_client.add_user_product_compatibility,
             access_token=access_token,
@@ -450,6 +488,8 @@ async def process_vehicle_row(
             metrics=metrics,
         )
 
+        dsep("ML RESPONSE")
+        dlog("ml_response:", ml_response)
         return {
             "ok": True,
             "item_id": item_id,
@@ -503,6 +543,7 @@ async def process_vehicle_row(
 
 
 async def process_rows_for_job(
+    
     job_id: str,
     access_token: str,
     rows: list[dict],
@@ -510,6 +551,7 @@ async def process_rows_for_job(
     caches = JobCaches()
     metrics = JobMetrics()
     catalog_cache = CatalogPreloadService(call_ml=call_ml, metrics=metrics)
+  
 
     JobStore.update(
         job_id,

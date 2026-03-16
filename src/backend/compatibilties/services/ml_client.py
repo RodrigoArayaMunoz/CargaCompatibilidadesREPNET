@@ -275,18 +275,18 @@ class MercadoLibreClient:
         known_attributes: list[dict[str, str]] = []
 
         if brand_id:
-            known_attributes.append({"id": "BRAND", "value_id": brand_id})
+            known_attributes.append({"id": "BRAND", "value_ids": [brand_id]})
         if model_id:
-            known_attributes.append({"id": "CAR_AND_VAN_MODEL", "value_id": model_id})
+            known_attributes.append({"id": "CAR_AND_VAN_MODEL", "value_ids": [model_id]})
         if year_id:
-            known_attributes.append({"id": "YEAR", "value_id": year_id})
+            known_attributes.append({"id": "YEAR", "value_ids": [year_id]})
         if version_id:
-            known_attributes.append({"id": "CAR_AND_VAN_SUBMODEL", "value_id": version_id})
+            known_attributes.append({"id": "CAR_AND_VAN_SUBMODEL", "value_ids": [version_id]})
         if engine_id:
-            known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_id": engine_id})
+            known_attributes.append({"id": "CAR_AND_VAN_ENGINE", "value_ids": [engine_id]})
         if transmission_id:
             known_attributes.append(
-                {"id": "TRANSMISSION_CONTROL_TYPE", "value_id": transmission_id}
+                {"id": "TRANSMISSION_CONTROL_TYPE", "value_ids": [transmission_id]}
             )
 
         response = await self.request(
@@ -299,6 +299,7 @@ class MercadoLibreClient:
                 "known_attributes": known_attributes,
             },
         )
+
 
         if isinstance(response, dict):
             results = response.get("results")
