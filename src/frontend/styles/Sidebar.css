@@ -36,19 +36,19 @@
 
 .sidebar__header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 20px 20px 16px;
+  align-items: center;        /* centra vertical */
+  justify-content: center;    /* centra horizontal */
+  padding: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: #ffffff;
+  position: relative; /* necesario para el botón close */
 }
 
 .sidebar__branding {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  flex: 1;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
 
 .sidebar__brand-logo {
@@ -57,6 +57,7 @@
   height: auto;
   display: block;
   object-fit: contain;
+  background-color: #ffffff;
 }
 
 .sidebar__branding-text {
@@ -79,18 +80,9 @@
 }
 
 .sidebar__close {
-  border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.82);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  flex-shrink: 0;
-  transition: background 0.2s ease;
+  position: absolute;
+  top: 1px;
+  right: 1px;
 }
 
 .sidebar__close:hover {
@@ -122,7 +114,8 @@
   margin-top: 8px;
   font-size: 14px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgb(255, 255, 255);
+  font-weight: bold;
 }
 
 .sidebar__nav {

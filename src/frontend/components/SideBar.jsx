@@ -42,7 +42,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
         <div className="sidebar__card">
           <p className="sidebar__card-label">Plataforma</p>
           <p className="sidebar__card-text">
-            Gestiona compatibilidades y actualizaciones de precios desde un solo panel.
+            Gestiona compatibilidades y actualizaciones de precios y stock.
           </p>
         </div>
 
