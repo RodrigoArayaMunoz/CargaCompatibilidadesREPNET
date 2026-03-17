@@ -1,9 +1,8 @@
 import Logo from "/logo.png";
-import "../styles/CompatibilitiesUpload.css";
+import "../styles/PriceStocksUploads.css";
 import { useEffect, useState, useRef } from "react";
 import ResultModal from "../components/ResultModal";
 import PublicationsWithoutCompatibilityModal from "../components/PublicationsWithoutCompatibilityModal";
-
 
 function ProcessingOverlay({ visible, progress = 0, message = "" }) {
   if (!visible) return null;
@@ -29,7 +28,7 @@ function ProcessingOverlay({ visible, progress = 0, message = "" }) {
   );
 }
 
-function App() {
+function CompatibilitiesUpload() {
   const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("idle");
@@ -60,21 +59,21 @@ function App() {
   }, []);
 
   const handleCloseResultModal = () => {
-  setShowResultModal(false);
+    setShowResultModal(false);
 
-  setFile(null);
-  setJobId(null);
-  setJobResult(null);
+    setFile(null);
+    setJobId(null);
+    setJobResult(null);
 
-  setProgress(0);
-  setProcessMessage("");
-  setStatus("idle");
-  setMessage("");
+    setProgress(0);
+    setProcessMessage("");
+    setStatus("idle");
+    setMessage("");
 
-  if (fileInputRef.current) {
-    fileInputRef.current.value = "";
-  }
-};
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const checkMlConnection = async () => {
     try {
@@ -254,8 +253,6 @@ function App() {
         if (data.status === "success") {
           finished = true;
           setProgress(100);
-          //setProcessMessage("Archivo procesado exitosamente. Cargando resumen final...");
-          //setMessage("Archivo procesado exitosamente. Cargando resumen final...");
           setStatus("success");
 
           try {
@@ -358,13 +355,13 @@ function App() {
     ? ""
     : mlStatusMessage;
 
-    const handleViewPublicationsWithoutCompatibilities = () => {
-      setShowPublicationsModal(true);
-    };
+  const handleViewPublicationsWithoutCompatibilities = () => {
+    setShowPublicationsModal(true);
+  };
 
-    const handleClosePublicationsModal = () => {
-      setShowPublicationsModal(false);
-    };
+  const handleClosePublicationsModal = () => {
+    setShowPublicationsModal(false);
+  };
 
   return (
     <>
@@ -374,98 +371,100 @@ function App() {
         message={processMessage}
       />
 
-      <div className="container">
-        <h1 className="title">Carga de Compatibilidades</h1>
-        <img src={Logo} alt="Logo" className="logo" />
+      <section className="compat-page">
+        <div className="content-panel compat-upload-panel">
+          <div className="compat-upload-panel__inner">
+            <div className="container">
+              <button
+                className={`process-button-ml ${mlVerified ? "connected" : ""}`}
+                onClick={handleConnectMercadoLibre}
+                disabled={checkingConnection || mlVerified}
+              >
+                {connectButtonText}
+              </button>
 
-        <button
-          className={`process-button-ml ${mlVerified ? "connected" : ""}`}
-          onClick={handleConnectMercadoLibre}
-          disabled={checkingConnection || mlVerified}
-        >
-          {connectButtonText}
-        </button>
+              <div className={`ml-status ${mlVerified ? "success" : "pending"}`}>
+                {statusText}
+              </div>
 
-        <div className={`ml-status ${mlVerified ? "success" : "pending"}`}>
-          {statusText}
+              <div className={`file-wrapper ${!mlVerified ? "disabled-section" : ""}`}>
+                <label
+                  className={`file-label ${!mlVerified ? "disabled-label" : ""}`}
+                  htmlFor="fileInput"
+                >
+                  📂 Elegir archivo (Excel o CSV)
+                </label>
+
+                <input
+                  ref={fileInputRef}
+                  id="fileInput"
+                  className="file-input"
+                  type="file"
+                  accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={handleFileChange}
+                  disabled={!mlVerified || status === "processing" || checkingConnection}
+                />
+
+                <span className="file-name">
+                  {file ? file.name : "Ningún archivo seleccionado"}
+                </span>
+
+                <small className="file-help-text">
+                  {acceptText}
+                </small>
+              </div>
+
+              <div className="actions-row">
+                <button
+                  className="process-button"
+                  onClick={handleProcess}
+                  disabled={
+                    !mlVerified ||
+                    !file ||
+                    status === "processing" ||
+                    checkingConnection ||
+                    loadingResult ||
+                    loadingProcess
+                  }
+                >
+                  {loadingResult
+                    ? "Cargando resumen..."
+                    : loadingProcess
+                    ? "Procesando..."
+                    : buttonText}
+                </button>
+
+                <button
+                  className="process-button secondary-action-button"
+                  onClick={handleViewPublicationsWithoutCompatibilities}
+                  disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
+                >
+                  Ver Publicaciones sin compatibilidades
+                </button>
+              </div>
+
+              {message && !loadingProcess && (
+                <p className={`status-message ${status}`}>{message}</p>
+              )}
+            </div>
+          </div>
         </div>
+      </section>
 
-        <div className={`file-wrapper ${!mlVerified ? "disabled-section" : ""}`}>
-          <label
-            className={`file-label ${!mlVerified ? "disabled-label" : ""}`}
-            htmlFor="fileInput"
-          >
-            📂 Elegir archivo (Excel o CSV)
-          </label>
+      <ResultModal
+        open={showResultModal}
+        onClose={handleCloseResultModal}
+        summary={jobResult?.summary}
+        results={jobResult?.results}
+      />
 
-<input
-  ref={fileInputRef}
-  id="fileInput"
-  className="file-input"
-  type="file"
-  accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  onChange={handleFileChange}
-  disabled={!mlVerified || status === "processing" || checkingConnection}
-/>
-
-          <span className="file-name">
-            {file ? file.name : "Ningún archivo seleccionado"}
-          </span>
-
-          <small style={{ display: "block", marginTop: 8, opacity: 0.7 }}>
-            {acceptText}
-          </small>
-        </div>
-
-<div className="actions-row">
-  <button
-    className="process-button"
-    onClick={handleProcess}
-    disabled={
-      !mlVerified ||
-      !file ||
-      status === "processing" ||
-      checkingConnection ||
-      loadingResult ||
-      loadingProcess
-    }
-  >
-    {loadingResult
-      ? "Cargando resumen..."
-      : loadingProcess
-      ? "Procesando..."
-      : buttonText}
-  </button>
-
-  <button
-    className="process-button secondary-action-button"
-    onClick={handleViewPublicationsWithoutCompatibilities}
-    disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
-  >
-    Ver Publicaciones sin compatibilidades
-  </button>
-</div>
-
-        {message && !loadingProcess && (
-          <p className={`status-message ${status}`}>{message}</p>
-        )}
-      </div>
-
-<ResultModal
-  open={showResultModal}
-  onClose={handleCloseResultModal}
-  summary={jobResult?.summary}
-  results={jobResult?.results}
-/>
-
-<PublicationsWithoutCompatibilityModal
-  open={showPublicationsModal}
-  onClose={handleClosePublicationsModal}
-  apiBase={API_BASE}
-/>
-
+      <PublicationsWithoutCompatibilityModal
+        open={showPublicationsModal}
+        onClose={handleClosePublicationsModal}
+        apiBase={API_BASE}
+      />
     </>
   );
 }
 
-export default App;
+export default CompatibilitiesUpload;
