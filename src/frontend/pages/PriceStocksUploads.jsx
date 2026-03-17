@@ -439,7 +439,7 @@ function CompatibilitiesUpload() {
                   onClick={handleViewPublicationsWithoutCompatibilities}
                   disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
                 >
-                  Ver Publicaciones sin compatibilidades
+                  Ver Últimas Actualizaciones de Precios/Stock
                 </button>
               </div>
 
