@@ -1,0 +1,24 @@
+import { Menu } from "lucide-react";
+import "../styles/TopBar.css";
+
+export default function Topbar({ title, onMenuClick }) {
+  return (
+    <header className="topbar">
+      <div className="topbar__inner">
+        <div className="topbar__left">
+          <button
+            className="topbar__menu-button"
+            onClick={onMenuClick}
+            aria-label="Abrir menú"
+          >
+            <Menu size={20} />
+          </button>
+
+          <div className="topbar__text">
+            <h2 className="topbar__title">{title}</h2>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
