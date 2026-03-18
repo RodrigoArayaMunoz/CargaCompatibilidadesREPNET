@@ -3,7 +3,7 @@
   top: 0;
   z-index: 30;
   background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(7px);
   border-bottom: 1px solid #dce6f5;
 }
 
