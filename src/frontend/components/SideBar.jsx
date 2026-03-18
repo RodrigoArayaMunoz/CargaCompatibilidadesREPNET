@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { X, Boxes, BadgeDollarSign } from "lucide-react";
 import logo from "../../../public/logo.png";
+import "../styles/SideBar.css";
 
 const navItems = [
   {
