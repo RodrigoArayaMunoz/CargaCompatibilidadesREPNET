@@ -1,22 +1,71 @@
-import { NavLink } from "react-router-dom";
-import { X, Boxes, BadgeDollarSign } from "lucide-react";
+import { useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import {
+  X,
+  Boxes,
+  BadgeDollarSign,
+  ChevronDown,
+  ChevronRight,
+  FileSpreadsheet,
+  Ban,
+} from "lucide-react";
 import logo from "../../../public/logo.png";
 import "../styles/SideBar.css";
 
 const navItems = [
   {
-    to: "/compatibilidades",
-    label: "Carga de compatibilidades",
+    key: "compatibilidades",
+    label: "COMPATIBILIDADES",
     icon: Boxes,
+    children: [
+      {
+        to: "/compatibilidades/carga-masiva",
+        label: "Carga Masiva de Compatibilidades",
+        icon: FileSpreadsheet,
+      },
+      {
+        to: "/compatibilidades/no-compatibilidades",
+        label: "Informar No Compatibilidades",
+        icon: Ban,
+      },
+    ],
   },
   {
-    to: "/precios-stock",
-    label: "Actualización de precios y stock",
+    key: "actualizaciones",
+    label: "ACTUALIZACIONES",
     icon: BadgeDollarSign,
+    children: [
+      {
+        to: "/actualizaciones/precios-stock",
+        label: "Actualizaciones de Precios y Stock",
+        icon: FileSpreadsheet,
+      },
+    ],
   },
 ];
 
 export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
+  const location = useLocation();
+
+  const getInitialOpenMenus = () => ({
+    compatibilidades: location.pathname.startsWith("/compatibilidades"),
+    actualizaciones: location.pathname.startsWith("/actualizaciones"),
+  });
+
+  const [openMenus, setOpenMenus] = useState(getInitialOpenMenus);
+
+  const toggleMenu = (key) => {
+    setOpenMenus((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const isChildActive = (to) => location.pathname === to;
+
+  const isGroupActive = (children) =>
+    children.some((child) => location.pathname.startsWith(child.to));
+
   return (
     <>
       <div
@@ -34,6 +83,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
             className="sidebar__close"
             onClick={() => setSidebarOpen(false)}
             aria-label="Cerrar menú"
+            type="button"
           >
             <X size={19} />
           </button>
@@ -47,23 +97,59 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
         </div>
 
         <nav className="sidebar__nav">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {navItems.map((group) => {
+            const GroupIcon = group.icon;
+            const groupOpen = openMenus[group.key];
+            const groupActive = isGroupActive(group.children);
 
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  `sidebar__link ${isActive ? "sidebar__link--active" : ""}`
-                }
-              >
-                <span className="sidebar__icon">
-                  <Icon size={20} />
-                </span>
-                <span>{item.label}</span>
-              </NavLink>
+              <div key={group.key} className="sidebar__group">
+                <button
+                  type="button"
+                  className={`sidebar__group-button ${
+                    groupActive ? "sidebar__group-button--active" : ""
+                  }`}
+                  onClick={() => toggleMenu(group.key)}
+                >
+                  <div className="sidebar__group-left">
+                    <span className="sidebar__icon">
+                      <GroupIcon size={20} />
+                    </span>
+                    <span className="sidebar__group-label">{group.label}</span>
+                  </div>
+
+                  <span className="sidebar__group-arrow">
+                    {groupOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                  </span>
+                </button>
+
+                <div
+                  className={`sidebar__submenu ${
+                    groupOpen ? "sidebar__submenu--open" : ""
+                  }`}
+                >
+                  {group.children.map((item) => {
+                    const ItemIcon = item.icon;
+                    const active = isChildActive(item.to);
+
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`sidebar__sublink ${
+                          active ? "sidebar__sublink--active" : ""
+                        }`}
+                      >
+                        <span className="sidebar__sublink-icon">
+                          <ItemIcon size={18} />
+                        </span>
+                        <span className="sidebar__sublink-text">{item.label}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>

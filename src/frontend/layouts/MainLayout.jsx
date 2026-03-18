@@ -26,10 +26,6 @@ export default function MainLayout() {
       />
 
       <div className="layout__main">
-        <Topbar
-          title={title}
-          onMenuClick={() => setSidebarOpen(true)}
-        />
 
         <main className="layout__content">
           <div className="layout__content-inner">
