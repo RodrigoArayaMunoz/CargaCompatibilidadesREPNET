@@ -1,5 +1,4 @@
 import { Menu } from "lucide-react";
-import "../styles/TopBar.css";
 
 export default function Topbar({ title, onMenuClick }) {
   return (
