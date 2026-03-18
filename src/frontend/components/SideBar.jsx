@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { X, Boxes, BadgeDollarSign } from "lucide-react";
 import logo from "../../../public/logo.png";
-import "../styles/SideBar.css";
+import "../styles/Sidebar.css";
 
 const navItems = [
   {
@@ -35,7 +35,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
             onClick={() => setSidebarOpen(false)}
             aria-label="Cerrar menú"
           >
-            <X size={20} />
+            <X size={19} />
           </button>
         </div>
 

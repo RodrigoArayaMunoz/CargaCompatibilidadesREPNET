@@ -11,7 +11,7 @@ export default function Topbar({ title, onMenuClick }) {
             onClick={onMenuClick}
             aria-label="Abrir menú"
           >
-            <Menu size={20} />
+            <Menu size={19} />
           </button>
 
           <div className="topbar__text">
