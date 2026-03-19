@@ -1,7 +1,7 @@
 .layout {
   min-height: 100vh;
   display: flex;
-  background: #f4f7fb;
+  background: #ffffff;
 }
 
 .layout__main {
@@ -14,28 +14,21 @@
 
 .layout__content {
   flex: 1;
-  min-height: 0;
-  padding: 16px;
-  display: flex;
-}
-
-.layout__content-inner {
-  flex: 1;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  display: flex;
-  min-height: 0;
+  min-width: 0;
+  min-height: 100vh;
+  padding: 12px;
+  display: block;
+  box-sizing: border-box;
 }
 
 @media (min-width: 768px) {
   .layout__content {
-    padding: 24px;
+    padding: 16px;
   }
 }
 
 @media (min-width: 1200px) {
   .layout__content {
-    padding: 32px;
+    padding: 20px;
   }
 }

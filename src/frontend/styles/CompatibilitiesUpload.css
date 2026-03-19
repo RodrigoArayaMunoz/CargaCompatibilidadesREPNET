@@ -1,54 +1,33 @@
 .compat-page {
-  flex: 1;
   width: 100%;
-  display: flex;
-  min-height: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
 }
 
-.content-panel {
+.compat-upload-layout {
   width: 100%;
-  min-height: 100%;
-  background: #ffffff;
-  border: 1px solid #dce6f5;
-  border-radius: 28px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
-  padding: 24px;
-}
-
-.compat-upload-panel {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-}
-
-.compat-upload-panel__inner {
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
   text-align: center;
-  padding: 24px 12px;
+  padding: 40px 24px;
+  box-sizing: border-box;
 }
 
-.compat-upload-panel__title {
-  font-size: 2.1rem;
-  font-weight: 800;
-  color: #1e293b;
-  line-height: 1.15;
-  margin-bottom: 24px;
-}
-
-.compat-upload-panel__logo {
-  width: min(220px, 58%);
-  height: auto;
-  object-fit: contain;
-  display: block;
-  margin: 0 auto 28px;
-}
-
-.container {
-  width: 100%;
-  max-width: 620px;
-  margin: 0 auto;
+.ml-connection-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
 }
 
 .process-button-ml {
@@ -60,8 +39,8 @@
   padding: 16px 28px;
   border-radius: 16px;
   cursor: pointer;
-  min-width: 280px;
-  max-width: 100%;
+  min-width: 320px;
+  margin: 0;
   transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
 }
 
@@ -80,10 +59,11 @@
 }
 
 .ml-status {
-  margin-top: 0px;
+  margin: 0;
+  padding: 0;
   font-size: 1rem;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .ml-status.pending {
@@ -95,7 +75,8 @@
 }
 
 .file-wrapper {
-  margin-top: 24px;
+  width: 100%;
+  margin-bottom: 130px;
 }
 
 .disabled-section {
@@ -113,7 +94,6 @@
   border-radius: 16px;
   cursor: pointer;
   min-width: 320px;
-  max-width: 100%;
   transition: background 0.2s ease;
 }
 
@@ -140,17 +120,17 @@
 
 .file-help-text {
   display: block;
-  margin-top: 20px;
+  margin-top: 16px;
   color: #9aa3af;
   font-size: 0.95rem;
 }
 
 .actions-row {
-  margin-top: 38px;
   display: flex;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .process-button {
@@ -204,7 +184,6 @@
   color: #475569;
 }
 
-/* Overlay de procesamiento */
 .processing-overlay {
   position: fixed;
   inset: 0;
@@ -275,30 +254,9 @@
   }
 }
 
-@media (max-width: 991px) {
-  .compat-upload-panel__title {
-    font-size: 1.8rem;
-  }
-}
-
 @media (max-width: 767px) {
-  .content-panel {
-    border-radius: 20px;
-    padding: 20px;
-  }
-
-  .compat-upload-panel__inner {
-    padding: 10px 0;
-  }
-
-  .compat-upload-panel__title {
-    font-size: 1.55rem;
-    margin-bottom: 20px;
-  }
-
-  .compat-upload-panel__logo {
-    width: min(180px, 70%);
-    margin-bottom: 22px;
+  .compat-upload-layout {
+    padding: 20px 16px;
   }
 
   .process-button-ml,
@@ -316,4 +274,9 @@
   .status-message {
     font-size: 0.95rem;
   }
+}
+
+.ml-connection-block > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }

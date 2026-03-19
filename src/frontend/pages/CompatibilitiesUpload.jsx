@@ -1,4 +1,3 @@
-import Logo from "/logo.png";
 import "../styles/CompatibilitiesUpload.css";
 import { useEffect, useState, useRef } from "react";
 import ResultModal from "../components/ResultModal";
@@ -60,11 +59,9 @@ function CompatibilitiesUpload() {
 
   const handleCloseResultModal = () => {
     setShowResultModal(false);
-
     setFile(null);
     setJobId(null);
     setJobResult(null);
-
     setProgress(0);
     setProcessMessage("");
     setStatus("idle");
@@ -352,7 +349,7 @@ function CompatibilitiesUpload() {
   const statusText = checkingConnection
     ? "Verificando conexión con Mercado Libre..."
     : mlVerified
-    ? ""
+    ? "Conectado exitosamente"
     : mlStatusMessage;
 
   const handleViewPublicationsWithoutCompatibilities = () => {
@@ -363,108 +360,107 @@ function CompatibilitiesUpload() {
     setShowPublicationsModal(false);
   };
 
-  return (
-    <>
-      <ProcessingOverlay
-        visible={loadingProcess}
-        progress={progress}
-        message={processMessage}
-      />
+return (
+  <>
+    <ProcessingOverlay
+      visible={loadingProcess}
+      progress={progress}
+      message={processMessage}
+    />
 
-      <section className="compat-page">
-        <div className="content-panel compat-upload-panel">
-          <div className="compat-upload-panel__inner">
-            <div className="container">
-              <button
-                className={`process-button-ml ${mlVerified ? "connected" : ""}`}
-                onClick={handleConnectMercadoLibre}
-                disabled={checkingConnection || mlVerified}
-              >
-                {connectButtonText}
-              </button>
+    <section className="compat-page">
+      <div className="compat-upload-layout">
+        <div className="ml-connection-block">
+          <button
+            className={`process-button-ml ${mlVerified ? "connected" : ""}`}
+            onClick={handleConnectMercadoLibre}
+            disabled={checkingConnection || mlVerified}
+            type="button"
+          >
+            {connectButtonText}
+          </button>
 
-              <div className={`ml-status ${mlVerified ? "success" : "pending"}`}>
-                {statusText}
-              </div>
-
-              <div className={`file-wrapper ${!mlVerified ? "disabled-section" : ""}`}>
-                <label
-                  className={`file-label ${!mlVerified ? "disabled-label" : ""}`}
-                  htmlFor="fileInput"
-                >
-                  📂 Elegir archivo (Excel o CSV)
-                </label>
-
-                <input
-                  ref={fileInputRef}
-                  id="fileInput"
-                  className="file-input"
-                  type="file"
-                  accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  onChange={handleFileChange}
-                  disabled={!mlVerified || status === "processing" || checkingConnection}
-                />
-
-                <span className="file-name">
-                  {file ? file.name : "Ningún archivo seleccionado"}
-                </span>
-
-                <small className="file-help-text">
-                  {acceptText}
-                </small>
-              </div>
-
-              <div className="actions-row">
-                <button
-                  className="process-button"
-                  onClick={handleProcess}
-                  disabled={
-                    !mlVerified ||
-                    !file ||
-                    status === "processing" ||
-                    checkingConnection ||
-                    loadingResult ||
-                    loadingProcess
-                  }
-                >
-                  {loadingResult
-                    ? "Cargando resumen..."
-                    : loadingProcess
-                    ? "Procesando..."
-                    : buttonText}
-                </button>
-
-                <button
-                  className="process-button secondary-action-button"
-                  onClick={handleViewPublicationsWithoutCompatibilities}
-                  disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
-                >
-                  Ver Publicaciones sin compatibilidades
-                </button>
-              </div>
-
-              {message && !loadingProcess && (
-                <p className={`status-message ${status}`}>{message}</p>
-              )}
-            </div>
-          </div>
+          <p className={`ml-status ${mlVerified ? "success" : "pending"}`}>
+            {statusText}
+          </p>
         </div>
-      </section>
 
-      <ResultModal
-        open={showResultModal}
-        onClose={handleCloseResultModal}
-        summary={jobResult?.summary}
-        results={jobResult?.results}
-      />
+        <div className={`file-wrapper ${!mlVerified ? "disabled-section" : ""}`}>
+          <label
+            className={`file-label ${!mlVerified ? "disabled-label" : ""}`}
+            htmlFor="fileInput"
+          >
+            📂 Elegir archivo (Excel o CSV)
+          </label>
 
-      <PublicationsWithoutCompatibilityModal
-        open={showPublicationsModal}
-        onClose={handleClosePublicationsModal}
-        apiBase={API_BASE}
-      />
-    </>
-  );
+          <input
+            ref={fileInputRef}
+            id="fileInput"
+            className="file-input"
+            type="file"
+            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={handleFileChange}
+            disabled={!mlVerified || status === "processing" || checkingConnection}
+          />
+
+          <span className="file-name">
+            {file ? file.name : "Ningún archivo seleccionado"}
+          </span>
+
+          <small className="file-help-text">{acceptText}</small>
+        </div>
+
+        <div className="actions-row">
+          <button
+            className="process-button"
+            onClick={handleProcess}
+            disabled={
+              !mlVerified ||
+              !file ||
+              status === "processing" ||
+              checkingConnection ||
+              loadingResult ||
+              loadingProcess
+            }
+            type="button"
+          >
+            {loadingResult
+              ? "Cargando resumen..."
+              : loadingProcess
+              ? "Procesando..."
+              : buttonText}
+          </button>
+
+          <button
+            className="process-button secondary-action-button"
+            onClick={handleViewPublicationsWithoutCompatibilities}
+            disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
+            type="button"
+          >
+            Ver Publicaciones sin compatibilidades
+          </button>
+        </div>
+
+        {message && !loadingProcess && (
+          <p className={`status-message ${status}`}>{message}</p>
+        )}
+      </div>
+    </section>
+
+    <ResultModal
+      open={showResultModal}
+      onClose={handleCloseResultModal}
+      summary={jobResult?.summary}
+      results={jobResult?.results}
+    />
+
+    <PublicationsWithoutCompatibilityModal
+      open={showPublicationsModal}
+      onClose={handleClosePublicationsModal}
+      apiBase={API_BASE}
+    />
+  </>
+);
 }
 
 export default CompatibilitiesUpload;

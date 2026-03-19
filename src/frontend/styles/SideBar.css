@@ -28,7 +28,7 @@
   transition: transform 0.3s ease;
   z-index: 50;
   padding-bottom: 16px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .sidebar--open {
@@ -107,10 +107,22 @@
 }
 
 .sidebar__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 0 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar__nav::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .sidebar__group {

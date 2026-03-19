@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   X,
@@ -47,24 +47,32 @@ const navItems = [
 export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const location = useLocation();
 
-  const getInitialOpenMenus = () => ({
-    compatibilidades: location.pathname.startsWith("/compatibilidades"),
-    actualizaciones: location.pathname.startsWith("/actualizaciones"),
+  const getMenuStateFromPath = (pathname) => ({
+    compatibilidades: pathname.startsWith("/compatibilidades"),
+    actualizaciones: pathname.startsWith("/actualizaciones"),
   });
 
-  const [openMenus, setOpenMenus] = useState(getInitialOpenMenus);
+  const [openMenus, setOpenMenus] = useState(
+    getMenuStateFromPath(location.pathname)
+  );
+
+  useEffect(() => {
+    setOpenMenus(getMenuStateFromPath(location.pathname));
+  }, [location.pathname]);
 
   const toggleMenu = (key) => {
     setOpenMenus((prev) => ({
-      ...prev,
-      [key]: !prev[key],
+      compatibilidades:
+        key === "compatibilidades" ? !prev.compatibilidades : false,
+      actualizaciones:
+        key === "actualizaciones" ? !prev.actualizaciones : false,
     }));
   };
 
   const isChildActive = (to) => location.pathname === to;
 
   const isGroupActive = (children) =>
-    children.some((child) => location.pathname.startsWith(child.to));
+    children.some((child) => location.pathname === child.to);
 
   return (
     <>
@@ -110,6 +118,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
                     groupActive ? "sidebar__group-button--active" : ""
                   }`}
                   onClick={() => toggleMenu(group.key)}
+                  aria-expanded={groupOpen}
                 >
                   <div className="sidebar__group-left">
                     <span className="sidebar__icon">
@@ -119,7 +128,11 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
                   </div>
 
                   <span className="sidebar__group-arrow">
-                    {groupOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    {groupOpen ? (
+                      <ChevronDown size={18} />
+                    ) : (
+                      <ChevronRight size={18} />
+                    )}
                   </span>
                 </button>
 
@@ -144,7 +157,9 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
                         <span className="sidebar__sublink-icon">
                           <ItemIcon size={18} />
                         </span>
-                        <span className="sidebar__sublink-text">{item.label}</span>
+                        <span className="sidebar__sublink-text">
+                          {item.label}
+                        </span>
                       </NavLink>
                     );
                   })}
