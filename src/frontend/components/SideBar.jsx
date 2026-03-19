@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   X,
   Boxes,
-  BadgeDollarSign,
+  ClipboardPen,
   ChevronDown,
   ChevronRight,
   FileSpreadsheet,
@@ -33,7 +33,7 @@ const navItems = [
   {
     key: "actualizaciones",
     label: "ACTUALIZACIONES",
-    icon: BadgeDollarSign,
+    icon: ClipboardPen,
     children: [
       {
         to: "/actualizaciones/precios-stock",

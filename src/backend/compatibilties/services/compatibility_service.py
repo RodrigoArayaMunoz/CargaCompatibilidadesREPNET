@@ -341,12 +341,12 @@ async def process_vehicle_row(
                 error_code="MISSING_USER_PRODUCT_ID",
             )
         
-        dsep("ITEM DETAIL")
-        dlog("item_id         :", item_id)
-        dlog("category_id     :", category_id)
-        dlog("user_product_id :", user_product_id)
-        dlog("title           :", item_detail.get("title"))
-        dlog("domain_id       :", item_detail.get("domain_id"))
+        # dsep("ITEM DETAIL")
+        # dlog("item_id         :", item_id)
+        # dlog("category_id     :", category_id)
+        # dlog("user_product_id :", user_product_id)
+        # dlog("title           :", item_detail.get("title"))
+        # dlog("domain_id       :", item_detail.get("domain_id"))
 
         brand_id = catalog_cache.resolve_brand_id(brand_name)
         if not brand_id:
@@ -472,11 +472,11 @@ async def process_vehicle_row(
                 ],
             )
 
-        dsep("CREATE COMPATIBILITY")
-        dlog("user_product_id :", str(user_product_id))
-        dlog("category_id     :", str(category_id))
-        dlog("product_id      :", product_id)
-        dlog("creation_source :", "DEFAULT")
+        # dsep("CREATE COMPATIBILITY")
+        # dlog("user_product_id :", str(user_product_id))
+        # dlog("category_id     :", str(category_id))
+        # dlog("product_id      :", product_id)
+        # dlog("creation_source :", "DEFAULT")
 
         ml_response = await call_ml(
             ml_client.add_user_product_compatibility,
@@ -488,8 +488,8 @@ async def process_vehicle_row(
             metrics=metrics,
         )
 
-        dsep("ML RESPONSE")
-        dlog("ml_response:", ml_response)
+        #dsep("ML RESPONSE")
+        #dlog("ml_response:", ml_response)
         return {
             "ok": True,
             "item_id": item_id,
