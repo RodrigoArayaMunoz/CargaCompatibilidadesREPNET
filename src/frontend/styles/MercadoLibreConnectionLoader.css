@@ -1,0 +1,38 @@
+.ml-global-loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(244, 247, 251, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ml-global-loader-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.ml-global-loader-spinner {
+  width: 54px;
+  height: 54px;
+  border: 4px solid #dbeafe;
+  border-top-color: #5d99ff;
+  border-radius: 50%;
+  animation: mlGlobalSpin 0.8s linear infinite;
+}
+
+.ml-global-loader-text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+@keyframes mlGlobalSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

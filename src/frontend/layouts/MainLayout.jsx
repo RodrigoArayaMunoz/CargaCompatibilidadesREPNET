@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/SideBar";
+import MercadoLibreConnectionModal from "../components/MercadoLibreConnectionModal";
+import MercadoLibreConnectionLoader from "../components/MercadoLibreConnectionLoader";
 import "../styles/MainLayout.css";
 
 function RouteLoadingOverlay({ visible }) {
@@ -51,6 +53,9 @@ export default function MainLayout() {
           <RouteLoadingOverlay visible={routeLoading} />
         </main>
       </div>
+
+      <MercadoLibreConnectionLoader />
+      <MercadoLibreConnectionModal />
     </div>
   );
 }

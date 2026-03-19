@@ -43,26 +43,33 @@ app.add_middleware(
 
 @app.get("/ml/status")
 async def ml_status():
-    user_id = token_store.first_user_id()
-    if not user_id:
-        return {"connected": False}
-
-    token_data = token_store.get(user_id)
+    token_data = token_store.get()
     if not token_data:
-        return {"connected": False}
+        return {
+            "connected": False,
+            "message": "No hay cuenta de Mercado Libre conectada",
+        }
 
     try:
-        await ml_client.get_valid_token(user_id)
-        token_data = token_store.get(user_id)
+        access_token = await ml_client.get_valid_token()
+
+        me = await ml_client.request("GET", "/users/me", access_token)
+
         return {
             "connected": True,
-            "user_id": user_id,
-            "has_refresh_token": bool(token_data.get("refresh_token")),
-            "expires_in": token_data.get("expires_in"),
+            "message": "Cuenta conectada correctamente",
+            "account": {
+                "user_id": me.get("id"),
+                "nickname": me.get("nickname"),
+                "email": me.get("email"),
+            },
             "expires_at": token_data.get("expires_at"),
         }
     except HTTPException:
-        return {"connected": False}
+        return {
+            "connected": False,
+            "message": "La conexión con Mercado Libre no es válida. Debes reconectar.",
+        }
 
 
 @app.get("/ml/me")
@@ -108,12 +115,12 @@ async def ml_auth_callback(code: str = Query(...), state: str | None = None):
         raise HTTPException(status_code=r.status_code, detail=r.text)
 
     token_data = r.json()
-    user_id = token_data.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=500, detail="No se recibió user_id")
+    if not token_data.get("access_token"):
+        raise HTTPException(status_code=500, detail="No se recibió access_token")
 
-    token_store.set(user_id, token_store.build_payload(token_data, user_id))
-    return RedirectResponse(url=settings.frontend_url)
+    token_store.set(token_store.build_payload(token_data))
+
+    return RedirectResponse(url=f"{settings.frontend_url}/ml-connected")
 
 
 @app.post("/auth/refresh")
@@ -129,9 +136,9 @@ async def ml_refresh_token(user_id: int):
 
 
 @app.post("/auth/logout")
-async def ml_logout(user_id: int):
-    token_store.remove(user_id)
-    return {"ok": True, "message": "Sesión local eliminada"}
+async def ml_logout():
+    token_store.remove()
+    return {"ok": True, "message": "Cuenta de Mercado Libre desconectada"}
 
 
 @app.post("/imports-excel", response_model=JobResponse)
