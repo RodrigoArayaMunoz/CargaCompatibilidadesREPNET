@@ -1,6 +1,7 @@
-.compat-page {
+.price-stocks-page {
   width: 100%;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
   margin: 0;
   padding: 0;
   background: transparent;
@@ -10,27 +11,28 @@
   box-sizing: border-box;
 }
 
-.compat-upload-layout {
+.price-stocks-layout {
   width: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 24px;
+  padding: 56px 24px 24px;
   box-sizing: border-box;
 }
 
-.ml-connection-block {
+.price-stocks-connection-block {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  margin: 0;
+  margin-bottom: 20px;
   padding: 0;
 }
 
-.process-button-ml {
+.price-stocks-connect-button {
   border: none;
   background: #f4db47;
   color: #2437b4;
@@ -44,21 +46,21 @@
   transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
 }
 
-.process-button-ml:hover:not(:disabled) {
+.price-stocks-connect-button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.process-button-ml:disabled {
+.price-stocks-connect-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
-.process-button-ml.connected {
+.price-stocks-connect-button.connected {
   background: #d9f99d;
   color: #166534;
 }
 
-.ml-status {
+.price-stocks-status {
   margin: 0;
   padding: 0;
   font-size: 1rem;
@@ -66,24 +68,20 @@
   line-height: 1.45;
 }
 
-.ml-status.pending {
+.price-stocks-status.pending {
   color: #5b6472;
 }
 
-.ml-status.success {
+.price-stocks-status.success {
   color: #16a34a;
 }
 
-.file-wrapper {
+.price-stocks-file-wrapper {
   width: 100%;
-  margin-bottom: 130px;
+  margin-bottom: 150px;
 }
 
-.disabled-section {
-  opacity: 0.7;
-}
-
-.file-label {
+.price-stocks-file-label {
   display: inline-block;
   border: none;
   background: #c5cad4;
@@ -97,20 +95,15 @@
   transition: background 0.2s ease;
 }
 
-.file-label:hover {
+.price-stocks-file-label:hover {
   background: #b8bec9;
 }
 
-.disabled-label {
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
-.file-input {
+.price-stocks-file-input {
   display: none;
 }
 
-.file-name {
+.price-stocks-file-name {
   display: block;
   margin-top: 14px;
   color: #666f7d;
@@ -118,14 +111,14 @@
   word-break: break-word;
 }
 
-.file-help-text {
+.price-stocks-file-help-text {
   display: block;
   margin-top: 16px;
   color: #9aa3af;
   font-size: 0.95rem;
 }
 
-.actions-row {
+.price-stocks-actions-row {
   display: flex;
   justify-content: center;
   gap: 12px;
@@ -133,7 +126,7 @@
   width: 100%;
 }
 
-.process-button {
+.price-stocks-process-button {
   border: none;
   background: #5d99ff;
   color: #08101f;
@@ -146,45 +139,54 @@
   transition: background 0.2s ease, opacity 0.2s ease;
 }
 
-.process-button:hover:not(:disabled) {
+.price-stocks-process-button:hover:not(:disabled) {
   background: #76aaff;
 }
 
-.process-button:disabled {
+.price-stocks-process-button:disabled {
   background: #c5cad4;
   color: #ffffff;
   cursor: not-allowed;
 }
 
-.secondary-action-button {
+.price-stocks-secondary-button {
   background: #1e293b;
   color: #ffffff;
 }
 
-.secondary-action-button:hover:not(:disabled) {
+.price-stocks-secondary-button:hover:not(:disabled) {
   background: #334155;
 }
 
-.status-message {
+.price-stocks-status-message {
   margin-top: 24px;
   font-size: 0.98rem;
   font-weight: 600;
   line-height: 1.5;
 }
 
-.status-message.error {
+.price-stocks-status-message.error {
   color: #dc2626;
 }
 
-.status-message.success {
+.price-stocks-status-message.success {
   color: #16a34a;
 }
 
-.status-message.idle {
+.price-stocks-status-message.idle {
   color: #475569;
 }
 
-.processing-overlay {
+.disabled-section {
+  opacity: 0.7;
+}
+
+.disabled-label {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.price-stocks-processing-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.55);
@@ -195,7 +197,7 @@
   padding: 20px;
 }
 
-.processing-box {
+.price-stocks-processing-box {
   width: 100%;
   max-width: 420px;
   background: #ffffff;
@@ -205,35 +207,35 @@
   text-align: center;
 }
 
-.processing-spinner {
+.price-stocks-processing-spinner {
   width: 52px;
   height: 52px;
   border: 4px solid #dbeafe;
   border-top-color: #5d99ff;
   border-radius: 50%;
   margin: 0 auto 18px;
-  animation: spin 0.9s linear infinite;
+  animation: priceStocksSpin 0.9s linear infinite;
 }
 
-.processing-box h2 {
+.price-stocks-processing-box h2 {
   font-size: 1.3rem;
   color: #1e293b;
   margin-bottom: 12px;
 }
 
-.processing-progress {
+.price-stocks-processing-progress {
   font-size: 1.8rem;
   font-weight: 800;
   color: #5d99ff;
 }
 
-.processing-message {
+.price-stocks-processing-message {
   margin-top: 10px;
   color: #64748b;
   line-height: 1.5;
 }
 
-.processing-bar {
+.price-stocks-processing-bar {
   margin-top: 18px;
   width: 100%;
   height: 10px;
@@ -242,41 +244,36 @@
   overflow: hidden;
 }
 
-.processing-bar-fill {
+.price-stocks-processing-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #5d99ff, #76aaff);
   transition: width 0.3s ease;
 }
 
-@keyframes spin {
+@keyframes priceStocksSpin {
   to {
     transform: rotate(360deg);
   }
 }
 
 @media (max-width: 767px) {
-  .compat-upload-layout {
+  .price-stocks-layout {
     padding: 20px 16px;
   }
 
-  .process-button-ml,
-  .file-label,
-  .process-button {
+  .price-stocks-connect-button,
+  .price-stocks-file-label,
+  .price-stocks-process-button {
     width: 100%;
     min-width: 0;
   }
 
-  .actions-row {
+  .price-stocks-actions-row {
     gap: 12px;
   }
 
-  .ml-status,
-  .status-message {
+  .price-stocks-status,
+  .price-stocks-status-message {
     font-size: 0.95rem;
   }
-}
-
-.ml-connection-block > * {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
 }

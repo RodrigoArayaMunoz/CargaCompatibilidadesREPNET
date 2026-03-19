@@ -1,34 +1,84 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
 .layout {
-  min-height: 100vh;
+  height: 100dvh;
   display: flex;
-  background: #ffffff;
+  background: #f4f7fb;
+  overflow: hidden;
 }
 
 .layout__main {
   flex: 1;
   min-width: 0;
-  min-height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .layout__content {
+  position: relative;
   flex: 1;
   min-width: 0;
-  min-height: 100vh;
-  padding: 12px;
+  height: 100%;
+  padding: 0;
   display: block;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
-@media (min-width: 768px) {
-  .layout__content {
-    padding: 16px;
-  }
+.layout__page {
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.2s ease;
 }
 
-@media (min-width: 1200px) {
-  .layout__content {
-    padding: 20px;
+.layout__page--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.route-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(244, 247, 251, 0.72);
+  backdrop-filter: blur(2px);
+  z-index: 20;
+}
+
+.route-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.route-loading-spinner {
+  width: 54px;
+  height: 54px;
+  border: 4px solid #dbeafe;
+  border-top-color: #5d99ff;
+  border-radius: 50%;
+  animation: routeSpin 0.8s linear infinite;
+}
+
+.route-loading-text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+@keyframes routeSpin {
+  to {
+    transform: rotate(360deg);
   }
 }

@@ -18,16 +18,15 @@
   top: 0;
   left: 0;
   width: 290px;
-  height: 100vh;
+  height: 100dvh;
   background: #0b1220;
   color: #ffffff;
-  border-right: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 50;
-  padding-bottom: 16px;
   overflow: hidden;
 }
 
@@ -273,5 +272,15 @@
 
   .sidebar__close {
     display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    transform: translateX(0);
+    flex-shrink: 0;
   }
 }

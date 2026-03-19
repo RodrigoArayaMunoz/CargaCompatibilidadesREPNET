@@ -7,18 +7,18 @@ function ProcessingOverlay({ visible, progress = 0, message = "" }) {
   if (!visible) return null;
 
   return (
-    <div className="processing-overlay">
-      <div className="processing-box">
-        <div className="processing-spinner" />
-        <h2>Procesando compatibilidades</h2>
-        <p className="processing-progress">{progress}%</p>
-        <p className="processing-message">
+    <div className="price-stocks-processing-overlay">
+      <div className="price-stocks-processing-box">
+        <div className="price-stocks-processing-spinner" />
+        <h2>Procesando actualizaciones</h2>
+        <p className="price-stocks-processing-progress">{progress}%</p>
+        <p className="price-stocks-processing-message">
           {message || "Procesando archivo..."}
         </p>
 
-        <div className="processing-bar">
+        <div className="price-stocks-processing-bar">
           <div
-            className="processing-bar-fill"
+            className="price-stocks-processing-bar-fill"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -360,107 +360,113 @@ function PriceStocksUploads() {
     setShowPublicationsModal(false);
   };
 
-return (
-  <>
-    <ProcessingOverlay
-      visible={loadingProcess}
-      progress={progress}
-      message={processMessage}
-    />
+  return (
+    <>
+      <ProcessingOverlay
+        visible={loadingProcess}
+        progress={progress}
+        message={processMessage}
+      />
 
-    <section className="compat-page">
-      <div className="compat-upload-layout">
-        <div className="ml-connection-block">
-          <button
-            className={`process-button-ml ${mlVerified ? "connected" : ""}`}
-            onClick={handleConnectMercadoLibre}
-            disabled={checkingConnection || mlVerified}
-            type="button"
+      <section className="price-stocks-page">
+        <div className="price-stocks-layout">
+          <div className="price-stocks-connection-block">
+            <button
+              className={`price-stocks-connect-button ${mlVerified ? "connected" : ""}`}
+              onClick={handleConnectMercadoLibre}
+              disabled={checkingConnection || mlVerified}
+              type="button"
+            >
+              {connectButtonText}
+            </button>
+
+            <p className={`price-stocks-status ${mlVerified ? "success" : "pending"}`}>
+              {statusText}
+            </p>
+          </div>
+
+          <div
+            className={`price-stocks-file-wrapper ${
+              !mlVerified ? "disabled-section" : ""
+            }`}
           >
-            {connectButtonText}
-          </button>
+            <label
+              className={`price-stocks-file-label ${
+                !mlVerified ? "disabled-label" : ""
+              }`}
+              htmlFor="priceStocksFileInput"
+            >
+              📂 Elegir archivo (Excel o CSV)
+            </label>
 
-          <p className={`ml-status ${mlVerified ? "success" : "pending"}`}>
-            {statusText}
-          </p>
+            <input
+              ref={fileInputRef}
+              id="priceStocksFileInput"
+              className="price-stocks-file-input"
+              type="file"
+              accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={handleFileChange}
+              disabled={!mlVerified || status === "processing" || checkingConnection}
+            />
+
+            <span className="price-stocks-file-name">
+              {file ? file.name : "Ningún archivo seleccionado"}
+            </span>
+
+            <small className="price-stocks-file-help-text">{acceptText}</small>
+          </div>
+
+          <div className="price-stocks-actions-row">
+            <button
+              className="price-stocks-process-button"
+              onClick={handleProcess}
+              disabled={
+                !mlVerified ||
+                !file ||
+                status === "processing" ||
+                checkingConnection ||
+                loadingResult ||
+                loadingProcess
+              }
+              type="button"
+            >
+              {loadingResult
+                ? "Cargando resumen..."
+                : loadingProcess
+                ? "Procesando..."
+                : buttonText}
+            </button>
+
+            <button
+              className="price-stocks-process-button price-stocks-secondary-button"
+              onClick={handleViewPublicationsWithoutCompatibilities}
+              disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
+              type="button"
+            >
+              Ver Actualizaciones de Precios/Stock
+            </button>
+          </div>
+
+          {message && !loadingProcess && (
+            <p className={`price-stocks-status-message ${status}`}>{message}</p>
+          )}
         </div>
+      </section>
 
-        <div className={`file-wrapper ${!mlVerified ? "disabled-section" : ""}`}>
-          <label
-            className={`file-label ${!mlVerified ? "disabled-label" : ""}`}
-            htmlFor="fileInput"
-          >
-            📂 Elegir archivo (Excel o CSV)
-          </label>
+      <ResultModal
+        open={showResultModal}
+        onClose={handleCloseResultModal}
+        summary={jobResult?.summary}
+        results={jobResult?.results}
+      />
 
-          <input
-            ref={fileInputRef}
-            id="fileInput"
-            className="file-input"
-            type="file"
-            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={handleFileChange}
-            disabled={!mlVerified || status === "processing" || checkingConnection}
-          />
-
-          <span className="file-name">
-            {file ? file.name : "Ningún archivo seleccionado"}
-          </span>
-
-          <small className="file-help-text">{acceptText}</small>
-        </div>
-
-        <div className="actions-row">
-          <button
-            className="process-button"
-            onClick={handleProcess}
-            disabled={
-              !mlVerified ||
-              !file ||
-              status === "processing" ||
-              checkingConnection ||
-              loadingResult ||
-              loadingProcess
-            }
-            type="button"
-          >
-            {loadingResult
-              ? "Cargando resumen..."
-              : loadingProcess
-              ? "Procesando..."
-              : buttonText}
-          </button>
-
-          <button
-            className="process-button secondary-action-button"
-            onClick={handleViewPublicationsWithoutCompatibilities}
-            disabled={!mlVerified || checkingConnection || loadingProcess || loadingResult}
-            type="button"
-          >
-            Ver Publicaciones sin compatibilidades
-          </button>
-        </div>
-
-        {message && !loadingProcess && (
-          <p className={`status-message ${status}`}>{message}</p>
-        )}
-      </div>
-    </section>
-
-    <ResultModal
-      open={showResultModal}
-      onClose={handleCloseResultModal}
-      summary={jobResult?.summary}
-      results={jobResult?.results}
-    />
-
-    <PublicationsWithoutCompatibilityModal
-      open={showPublicationsModal}
-      onClose={handleClosePublicationsModal}
-      apiBase={API_BASE}
-    />
-  </>
-);
+      <PublicationsWithoutCompatibilityModal
+        open={showPublicationsModal}
+        onClose={handleClosePublicationsModal}
+        apiBase={API_BASE}
+      />
+    </>
+  );
 }
 
 export default PriceStocksUploads;

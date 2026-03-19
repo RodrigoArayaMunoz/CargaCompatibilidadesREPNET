@@ -16,7 +16,7 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 24px;
+  padding: 56px 24px 24px;
   box-sizing: border-box;
 }
 
@@ -26,7 +26,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  margin: 0;
+  margin-bottom: 20px;
   padding: 0;
 }
 
@@ -76,7 +76,7 @@
 
 .file-wrapper {
   width: 100%;
-  margin-bottom: 130px;
+  margin-bottom: 150px;
 }
 
 .disabled-section {
