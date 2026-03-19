@@ -10,3 +10,7 @@ httpx
 celery[redis]
 redis
 orjson
+sqlalchemy
+asyncpg
+psycopg2-binary
+greenlet

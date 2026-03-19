@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: compat_postgres
+    environment:
+      POSTGRES_USER: repnet
+      POSTGRES_PASSWORD: repnet123
+      POSTGRES_DB: repnet
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repnet -d repnet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7
     container_name: compat_redis
@@ -6,6 +24,11 @@ services:
       - "6379:6379"
     restart: unless-stopped
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api:
     build:
@@ -20,9 +43,12 @@ services:
     env_file:
       - .env
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
 
   worker:
     build:
@@ -35,6 +61,12 @@ services:
     env_file:
       - .env
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     command: celery -A celery_app.celery_app worker --loglevel=info --concurrency=1 --pool=solo
+
+volumes:
+  postgres_data:
