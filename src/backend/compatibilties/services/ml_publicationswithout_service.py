@@ -3,6 +3,7 @@ import time
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ml_client import ml_client
 
@@ -23,7 +24,7 @@ class MlPublicationsService:
 
     async def get_publications_without_compatibilities(
         self,
-        user_id: str,
+        db: AsyncSession,
         page: int = 1,
         page_size: int = 20,
         q: str = "",
@@ -38,12 +39,12 @@ class MlPublicationsService:
                 detail=f"page_size debe estar entre 1 y {self.MAX_PAGE_SIZE}",
             )
 
-        access_token = await ml_client.get_valid_token(int(user_id))
+        access_token = await ml_client.get_valid_token(db)
         seller_id = await self._get_seller_id(access_token)
         seller_id_str = str(seller_id)
 
         if refresh:
-            await self.start_background_refresh(user_id)
+            await self.start_background_refresh(db)
 
         all_items = await self._get_or_build_cache(
             seller_id=seller_id_str,
@@ -78,8 +79,8 @@ class MlPublicationsService:
 
         return result
 
-    async def start_background_refresh(self, user_id: str) -> dict[str, Any]:
-        access_token = await ml_client.get_valid_token(int(user_id))
+    async def start_background_refresh(self, db: AsyncSession) -> dict[str, Any]:
+        access_token = await ml_client.get_valid_token(db)
         seller_id = str(await self._get_seller_id(access_token))
 
         existing = self._refresh_tasks.get(seller_id)
@@ -97,8 +98,8 @@ class MlPublicationsService:
             "in_progress": True,
         }
 
-    async def get_refresh_status(self, user_id: str) -> dict[str, Any]:
-        access_token = await ml_client.get_valid_token(int(user_id))
+    async def get_refresh_status(self, db: AsyncSession) -> dict[str, Any]:
+        access_token = await ml_client.get_valid_token(db)
         seller_id = str(await self._get_seller_id(access_token))
 
         meta = self._refresh_status.get(seller_id, {})
@@ -199,7 +200,6 @@ class MlPublicationsService:
 
         current_mlc_set = set(mlc_ids)
 
-        # Reutilizar títulos ya cacheados
         reused_items = []
         missing_ids = []
 
@@ -213,7 +213,6 @@ class MlPublicationsService:
             else:
                 missing_ids.append(mlc)
 
-        # Solo pedir a ML los títulos nuevos/faltantes
         fetched_items = await self._get_items_titles_multiget_concurrent(
             mlc_ids=missing_ids,
             access_token=access_token,
@@ -221,7 +220,6 @@ class MlPublicationsService:
 
         fetched_by_mlc = {item["mlc"]: item for item in fetched_items if item.get("mlc")}
 
-        # Reconstruir respetando el orden del scan actual
         final_items: list[dict[str, str]] = []
         seen: set[str] = set()
 
@@ -346,7 +344,7 @@ class MlPublicationsService:
 
         semaphore = asyncio.Semaphore(self.MULTIGET_CONCURRENCY)
         chunks = [
-            mlc_ids[i : i + self.MULTIGET_CHUNK_SIZE]
+            mlc_ids[i: i + self.MULTIGET_CHUNK_SIZE]
             for i in range(0, len(mlc_ids), self.MULTIGET_CHUNK_SIZE)
         ]
 

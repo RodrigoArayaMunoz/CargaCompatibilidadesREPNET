@@ -208,9 +208,6 @@ async def start_processing(job_id: str, db: AsyncSession = Depends(get_db)):
     if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    ml_user_id = token_data.get("user_id")
-    if not ml_user_id:
-        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
 
     JobStore.update(
         job_id,
@@ -219,7 +216,7 @@ async def start_processing(job_id: str, db: AsyncSession = Depends(get_db)):
         progress=0,
     )
 
-    task = process_excel_job.delay(job_id, str(ml_user_id))
+    task = process_excel_job.delay(job_id)
     JobStore.update(job_id, task_id=task.id)
 
     job = JobStore.get(job_id)
@@ -294,17 +291,13 @@ async def get_publications_without_compatibilities(
     if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    ml_user_id = token_data.get("user_id")
-    if not ml_user_id:
-        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
-
     return await ml_publications_service.get_publications_without_compatibilities(
-        user_id=str(ml_user_id),
-        page=page,
-        page_size=page_size,
-        q=q,
-        refresh=refresh,
-    )
+    db=db,
+    page=page,
+    page_size=page_size,
+    q=q,
+    refresh=refresh,
+)
 
 
 @app.post("/publications/without-compatibilities/refresh")
@@ -315,13 +308,7 @@ async def refresh_publications_without_compatibilities(
     if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    ml_user_id = token_data.get("user_id")
-    if not ml_user_id:
-        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
-
-    return await ml_publications_service.start_background_refresh(
-        user_id=str(ml_user_id)
-    )
+    return await ml_publications_service.start_background_refresh(db=db)
 
 
 @app.get("/publications/without-compatibilities/refresh-status")
@@ -332,10 +319,4 @@ async def get_publications_without_compatibilities_refresh_status(
     if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    ml_user_id = token_data.get("user_id")
-    if not ml_user_id:
-        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
-
-    return await ml_publications_service.get_refresh_status(
-        user_id=str(ml_user_id)
-    )
+    return await ml_publications_service.get_refresh_status(db=db)

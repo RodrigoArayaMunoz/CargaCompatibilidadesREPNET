@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from services.excel_service import normalize_for_compare
@@ -14,6 +15,7 @@ from services.token_store import require_ml_env, token_store
 class MercadoLibreClient:
     def __init__(self) -> None:
         self.client: httpx.AsyncClient | None = None
+        self.refresh_lock = asyncio.Lock()
 
     async def startup(self) -> None:
         if self.client is not None:
@@ -156,58 +158,64 @@ class MercadoLibreClient:
         except Exception:
             return False
 
-    async def refresh_token(self, user_id: int | str) -> dict:
-        require_ml_env()
+    async def refresh_token(self, db: AsyncSession) -> dict:
+        async with self.refresh_lock:
+            require_ml_env()
 
-        token_data = token_store.get(user_id)
-        if not token_data:
-            raise HTTPException(
-                status_code=404,
-                detail="No hay token guardado para ese user_id",
+            token_data = await token_store.get(db)
+            if not token_data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No hay token global guardado",
+                )
+
+            refresh_token = token_data.get("refresh_token")
+            if not refresh_token:
+                await token_store.remove(db)
+                raise HTTPException(
+                    status_code=400,
+                    detail="No hay refresh_token guardado",
+                )
+
+            if not self.client:
+                raise RuntimeError("MercadoLibreClient no inicializado")
+
+            payload = {
+                "grant_type": "refresh_token",
+                "client_id": settings.ml_client_id,
+                "client_secret": settings.ml_client_secret,
+                "refresh_token": refresh_token,
+            }
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/x-www-form-urlencoded",
+            }
+
+            r = await self.client.post(
+                settings.ml_token_url,
+                data=payload,
+                headers=headers,
             )
 
-        refresh_token = token_data.get("refresh_token")
-        if not refresh_token:
-            token_store.remove(user_id)
-            raise HTTPException(
-                status_code=400,
-                detail="No hay refresh_token guardado",
-            )
+            if r.status_code >= 400:
+                await token_store.remove(db)
+                raise HTTPException(status_code=r.status_code, detail=r.text)
 
-        if not self.client:
-            raise RuntimeError("MercadoLibreClient no inicializado")
+            new_token_data = token_store.build_payload(r.json())
+            await token_store.set(db, new_token_data)
+            return new_token_data
 
-        payload = {
-            "grant_type": "refresh_token",
-            "client_id": settings.ml_client_id,
-            "client_secret": settings.ml_client_secret,
-            "refresh_token": refresh_token,
-        }
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/x-www-form-urlencoded",
-        }
-
-        r = await self.client.post(settings.ml_token_url, data=payload, headers=headers)
-        if r.status_code >= 400:
-            token_store.remove(user_id)
-            raise HTTPException(status_code=r.status_code, detail=r.text)
-
-        new_token_data = token_store.build_payload(r.json(), user_id)
-        token_store.set(user_id, new_token_data)
-        return new_token_data
-
-    async def get_valid_token(self, user_id: int | str) -> str:
-        token_data = token_store.get(user_id)
+    async def get_valid_token(self, db: AsyncSession) -> str:
+        token_data = await token_store.get(db)
         if not token_data:
-            raise HTTPException(status_code=404, detail="No hay token guardado")
+            raise HTTPException(status_code=404, detail="No hay token global guardado")
 
         access_token = token_data.get("access_token")
         expires_at = int(token_data.get("expires_at", 0))
         now = int(time.time())
 
         if not access_token or now >= expires_at:
-            token_data = await self.refresh_token(user_id)
+            token_data = await self.refresh_token(db)
             access_token = token_data.get("access_token")
 
         if not access_token:
@@ -299,7 +307,6 @@ class MercadoLibreClient:
                 "known_attributes": known_attributes,
             },
         )
-
 
         if isinstance(response, dict):
             results = response.get("results")

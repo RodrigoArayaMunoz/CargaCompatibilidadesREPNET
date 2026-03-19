@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
 
     redis_url: str = "redis://redis:6379/0"
-    tokens_file: str = "tokens.json"
 
     ml_client_id: str | None = None
     ml_client_secret: str | None = None

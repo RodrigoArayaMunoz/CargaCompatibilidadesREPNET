@@ -4,6 +4,7 @@ import os
 
 from celery_app import celery_app
 from config import settings
+from database import AsyncSessionLocal
 from services.compatibility_service import process_rows_for_job
 from services.excel_service import load_excel_rows
 from services.job_store import JobStore
@@ -11,11 +12,11 @@ from services.ml_client import ml_client
 
 
 @celery_app.task(name="tasks.process_excel_job")
-def process_excel_job(job_id: str, user_id: str) -> None:
-    asyncio.run(_process_excel_job(job_id, user_id))
+def process_excel_job(job_id: str) -> None:
+    asyncio.run(_process_excel_job(job_id))
 
 
-async def _process_excel_job(job_id: str, user_id: str) -> None:
+async def _process_excel_job(job_id: str) -> None:
     job = JobStore.get(job_id)
     if not job:
         return
@@ -40,7 +41,8 @@ async def _process_excel_job(job_id: str, user_id: str) -> None:
         await ml_client.startup()
         ml_started = True
 
-        access_token = await ml_client.get_valid_token(int(user_id))
+        async with AsyncSessionLocal() as db:
+            access_token = await ml_client.get_valid_token(db)
 
         JobStore.update_progress(job_id, 5, "Leyendo archivo...")
         rows = load_excel_rows(xlsx_path)
