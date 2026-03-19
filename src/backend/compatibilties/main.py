@@ -1,16 +1,16 @@
 import json
 import os
-import uuid
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import get_db
 from config import settings
 from schemas import JobResponse
-from services import job_store
 from services.ml_publicationswithout_service import ml_publications_service
 from services.token_store import token_store, require_ml_env
 from services.job_store import JobStore
@@ -42,8 +42,8 @@ app.add_middleware(
 
 
 @app.get("/ml/status")
-async def ml_status():
-    token_data = token_store.get()
+async def ml_status(db: AsyncSession = Depends(get_db)):
+    token_data = await token_store.get(db)
     if not token_data:
         return {
             "connected": False,
@@ -51,8 +51,7 @@ async def ml_status():
         }
 
     try:
-        access_token = await ml_client.get_valid_token()
-
+        access_token = await ml_client.get_valid_token(db)
         me = await ml_client.request("GET", "/users/me", access_token)
 
         return {
@@ -73,8 +72,8 @@ async def ml_status():
 
 
 @app.get("/ml/me")
-async def ml_me(user_id: int):
-    access_token = await ml_client.get_valid_token(user_id)
+async def ml_me(db: AsyncSession = Depends(get_db)):
+    access_token = await ml_client.get_valid_token(db)
     data = await ml_client.request("GET", "/users/me", access_token)
     return data
 
@@ -92,7 +91,11 @@ def ml_auth_login():
 
 
 @app.get("/auth/callback")
-async def ml_auth_callback(code: str = Query(...), state: str | None = None):
+async def ml_auth_callback(
+    code: str = Query(...),
+    state: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     require_ml_env()
 
     payload = {
@@ -118,17 +121,17 @@ async def ml_auth_callback(code: str = Query(...), state: str | None = None):
     if not token_data.get("access_token"):
         raise HTTPException(status_code=500, detail="No se recibió access_token")
 
-    token_store.set(token_store.build_payload(token_data))
+    payload_to_save = token_store.build_payload(token_data)
+    await token_store.set(db, payload_to_save)
 
     return RedirectResponse(url=f"{settings.frontend_url}/ml-connected")
 
 
 @app.post("/auth/refresh")
-async def ml_refresh_token(user_id: int):
-    new_token_data = await ml_client.refresh_token(user_id)
+async def ml_refresh_token(db: AsyncSession = Depends(get_db)):
+    new_token_data = await ml_client.refresh_token(db)
     return {
         "ok": True,
-        "user_id": int(user_id),
         "expires_at": new_token_data.get("expires_at"),
         "expires_in": new_token_data.get("expires_in"),
         "message": "Token renovado correctamente",
@@ -136,9 +139,9 @@ async def ml_refresh_token(user_id: int):
 
 
 @app.post("/auth/logout")
-async def ml_logout():
-    token_store.remove()
-    return {"ok": True, "message": "Cuenta de Mercado Libre desconectada"}
+async def ml_logout(db: AsyncSession = Depends(get_db)):
+    await token_store.remove(db)
+    return {"ok": True, "message": "Sesión global eliminada"}
 
 
 @app.post("/imports-excel", response_model=JobResponse)
@@ -183,8 +186,9 @@ async def upload_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cargar el archivo: {str(e)}")
 
+
 @app.post("/imports/{job_id}/start", response_model=JobResponse)
-async def start_processing(job_id: str):
+async def start_processing(job_id: str, db: AsyncSession = Depends(get_db)):
     job = JobStore.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job no existe")
@@ -200,9 +204,13 @@ async def start_processing(job_id: str):
     if not job.get("xlsx_path"):
         raise HTTPException(status_code=400, detail="Excel no disponible")
 
-    user_id = token_store.first_user_id()
-    if not user_id:
+    token_data = await token_store.get(db)
+    if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
+
+    ml_user_id = token_data.get("user_id")
+    if not ml_user_id:
+        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
 
     JobStore.update(
         job_id,
@@ -211,8 +219,7 @@ async def start_processing(job_id: str):
         progress=0,
     )
 
-    task = process_excel_job.delay(job_id, str(user_id))
-
+    task = process_excel_job.delay(job_id, str(ml_user_id))
     JobStore.update(job_id, task_id=task.id)
 
     job = JobStore.get(job_id)
@@ -222,6 +229,7 @@ async def start_processing(job_id: str):
         message=job.get("message", "Procesamiento en cola..."),
         progress=job.get("progress", 0),
     )
+
 
 @app.get("/imports/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str):
@@ -235,6 +243,7 @@ async def get_job(job_id: str):
         message=job.get("message", ""),
         progress=job.get("progress", 0),
     )
+
 
 @app.get("/imports/{job_id}/result")
 async def get_job_result(job_id: str):
@@ -258,6 +267,7 @@ async def get_job_result(job_id: str):
         "results": result_data,
     }
 
+
 @app.get("/imports-excel/{job_id}", response_model=JobResponse)
 async def get_import_status(job_id: str):
     job = JobStore.get(job_id)
@@ -271,43 +281,61 @@ async def get_import_status(job_id: str):
         progress=job.get("progress", 0),
     )
 
+
 @app.get("/publications/without-compatibilities")
 async def get_publications_without_compatibilities(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=20),
     q: str = Query(""),
     refresh: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
 ):
-    user_id = token_store.first_user_id()
-    if not user_id:
+    token_data = await token_store.get(db)
+    if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
+    ml_user_id = token_data.get("user_id")
+    if not ml_user_id:
+        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
+
     return await ml_publications_service.get_publications_without_compatibilities(
-        user_id=str(user_id),
+        user_id=str(ml_user_id),
         page=page,
         page_size=page_size,
         q=q,
         refresh=refresh,
     )
 
+
 @app.post("/publications/without-compatibilities/refresh")
-async def refresh_publications_without_compatibilities():
-    user_id = token_store.first_user_id()
-    if not user_id:
+async def refresh_publications_without_compatibilities(
+    db: AsyncSession = Depends(get_db),
+):
+    token_data = await token_store.get(db)
+    if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
+    ml_user_id = token_data.get("user_id")
+    if not ml_user_id:
+        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
+
     return await ml_publications_service.start_background_refresh(
-        user_id=str(user_id)
+        user_id=str(ml_user_id)
     )
 
 
 @app.get("/publications/without-compatibilities/refresh-status")
-async def get_publications_without_compatibilities_refresh_status():
-    user_id = token_store.first_user_id()
-    if not user_id:
+async def get_publications_without_compatibilities_refresh_status(
+    db: AsyncSession = Depends(get_db),
+):
+    token_data = await token_store.get(db)
+    if not token_data:
         raise HTTPException(status_code=401, detail="No hay cuenta de Mercado Libre conectada")
 
-    return await ml_publications_service.get_refresh_status(
-        user_id=str(user_id)
-    )
+    ml_user_id = token_data.get("user_id")
+    if not ml_user_id:
+        raise HTTPException(status_code=401, detail="No hay user_id de Mercado Libre disponible")
 
+    return await ml_publications_service.get_refresh_status(
+        user_id=str(ml_user_id)
+    )
