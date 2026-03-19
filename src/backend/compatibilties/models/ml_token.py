@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Integer, SmallInteger, Text, CheckConstraint, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
-from models import Base
+from models.base import Base
 
 
 class MLToken(Base):
