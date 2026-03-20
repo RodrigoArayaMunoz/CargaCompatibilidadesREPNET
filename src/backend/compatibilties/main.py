@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import get_db, check_db_connection
 from config import settings
 from schemas import JobResponse
 from services.ml_publicationswithout_service import ml_publications_service
@@ -22,6 +22,7 @@ from tasks.import_tasks import process_excel_job
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(settings.upload_dir, exist_ok=True)
+    await check_db_connection()
     await ml_client.startup()
     yield
     await ml_client.shutdown()

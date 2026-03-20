@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from config import settings
 
@@ -17,3 +18,7 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
+    
+async def check_db_connection() -> None:
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT 1"))

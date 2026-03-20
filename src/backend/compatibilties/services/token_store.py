@@ -53,7 +53,6 @@ class TokenStore:
             row.expires_in = token_data.get("expires_in")
             row.expires_at = token_data["expires_at"]
 
-        await db.commit()
 
     @staticmethod
     async def remove(db: AsyncSession) -> None:

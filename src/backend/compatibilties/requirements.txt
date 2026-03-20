@@ -14,3 +14,4 @@ sqlalchemy
 asyncpg
 psycopg2-binary
 greenlet
+alembic
